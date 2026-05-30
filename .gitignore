@@ -1,0 +1,9 @@
+build/
+.dart_tool/
+.idea/
+.gradle/
+gradle-temp/
+gradle-temp-all/
+*.zip
+*.iml
+.metadata
