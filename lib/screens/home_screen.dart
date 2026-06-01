@@ -472,7 +472,7 @@ class _HomeScreenState extends State<HomeScreen> {
           case 1:
             return _buildCurriculumPanel();
           case 2:
-            return _buildInfoPlaceholder('Màn xem điểm sẽ được hiển thị tại đây.');
+            return _buildStudentGradesPanel();
           case 3:
             return _buildTuitionPanel();
           case 4:
@@ -513,6 +513,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildSchedulesPanel() {
     return const SchedulesScreen();
+  }
+
+  Widget _buildStudentGradesPanel() {
+    if (_studentId == null) {
+      return _buildInfoPlaceholder('Không tìm thấy sinh viên trong phiên đăng nhập.');
+    }
+    return GradesScreen(studentId: _studentId!, studentName: _username, role: _role);
   }
 
   Widget _buildGradesPanel() {
