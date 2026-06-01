@@ -231,4 +231,27 @@ class ApiService {
     final res = await http.get(Uri.parse(url), headers: await authHeaders());
     return jsonDecode(res.body);
   }
+
+  static Future<List> getSchedules({String? type, String? className}) async {
+    final params = <String>[];
+    if (type != null && type.isNotEmpty) params.add('type=$type');
+    if (className != null && className.isNotEmpty) params.add('className=${Uri.encodeComponent(className)}');
+    final url = params.isNotEmpty ? '$baseUrl/schedules?${params.join('&')}' : '$baseUrl/schedules';
+    final res = await http.get(Uri.parse(url), headers: await authHeaders());
+    return jsonDecode(res.body);
+  }
+
+  static Future<Map<String, dynamic>> addSchedule(Map<String, dynamic> data) async {
+    final res = await http.post(Uri.parse('$baseUrl/schedules'), headers: await authHeaders(), body: jsonEncode(data));
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> updateSchedule(int id, Map<String, dynamic> data) async {
+    final res = await http.put(Uri.parse('$baseUrl/schedules/$id'), headers: await authHeaders(), body: jsonEncode(data));
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  static Future<void> deleteSchedule(int id) async {
+    await http.delete(Uri.parse('$baseUrl/schedules/$id'), headers: await authHeaders());
+  }
 }
