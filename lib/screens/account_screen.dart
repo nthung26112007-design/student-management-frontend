@@ -16,16 +16,18 @@ class AccountScreen extends StatefulWidget {
 
 class _AccountScreenState extends State<AccountScreen> {
   Uint8List? _avatarBytes;
+  bool _isLoading = true;
+  Map<String, dynamic> _profile = {};
 
   String get _avatarKey {
-    final username = widget.profile['username']?.toString().trim();
-    final studentCode = widget.profile['student_code']?.toString().trim();
-    final role = widget.profile['role']?.toString().trim();
+    final username = _profile['username']?.toString().trim();
+    final studentCode = _profile['student_code']?.toString().trim();
+    final role = _profile['role']?.toString().trim();
     return 'avatar_bytes_${username?.isNotEmpty == true ? username : (studentCode?.isNotEmpty == true ? studentCode : role ?? 'user')}';
   }
 
   String? get _serverAvatarUrl {
-    final raw = widget.profile['avatar_url']?.toString().trim();
+    final raw = _profile['avatar_url']?.toString().trim();
     if (raw == null || raw.isEmpty) return null;
     return raw;
   }
@@ -50,10 +52,25 @@ class _AccountScreenState extends State<AccountScreen> {
   @override
   void initState() {
     super.initState();
-    _loadAvatar();
+    _profile = Map<String, dynamic>.from(widget.profile);
+    _loadProfile();
   }
 
-  Future<void> _loadAvatar() async {
+  Future<void> _loadProfile() async {
+    try {
+      final latest = await ApiService.getMyProfile();
+      if (!mounted) return;
+      setState(() {
+        _profile = {
+          ...widget.profile,
+          ...latest,
+        };
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+    }
     final prefs = await SharedPreferences.getInstance();
     final savedBytes = prefs.getString(_avatarKey);
     if (savedBytes == null || savedBytes.isEmpty) return;
@@ -177,18 +194,18 @@ class _AccountScreenState extends State<AccountScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final fullName = widget.profile['full_name']?.toString().trim().isNotEmpty == true
-        ? widget.profile['full_name'].toString()
-        : (widget.profile['username']?.toString() ?? 'Tài khoản');
+    final fullName = _profile['full_name']?.toString().trim().isNotEmpty == true
+        ? _profile['full_name'].toString()
+        : (_profile['username']?.toString() ?? 'Tài khoản');
 
-    final studentCode = widget.profile['student_code']?.toString() ?? '—';
-    final gender = widget.profile['gender']?.toString() ?? '—';
-    final birthDate = _formatDate(widget.profile['birth_date']);
-    final className = widget.profile['class_name']?.toString() ?? '—';
-    final email = widget.profile['email']?.toString() ?? '—';
-    final phone = widget.profile['phone']?.toString() ?? '—';
-    final status = widget.profile['status']?.toString() ?? 'Đang học';
-
+    final studentCode = _profile['student_code']?.toString() ?? '—';
+    final gender = _profile['gender']?.toString() ?? '—';
+    final birthDate = _formatDate(_profile['birth_date']);
+    final className = _profile['class_name']?.toString() ?? '—';
+    final email = _profile['email']?.toString() ?? '—';
+    final phone = _profile['phone']?.toString() ?? '—';
+    final status = _profile['status']?.toString() ?? 'Đang học';
+    final role = _profile['role']?.toString() ?? 'student';
     final avatarProvider = _avatarImageProvider();
     final avatar = avatarProvider != null
         ? CircleAvatar(radius: 48, backgroundImage: avatarProvider)
@@ -199,91 +216,162 @@ class _AccountScreenState extends State<AccountScreen> {
           );
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            pinned: true,
-            expandedHeight: 300,
-            backgroundColor: Colors.blue.shade700,
-            foregroundColor: Colors.white,
-            title: const Text('Thông tin sinh viên'),
-            flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.blue.shade700, Colors.blue.shade500],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                ),
-                child: SafeArea(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      const SizedBox(height: 16),
-                      GestureDetector(
-                        onTap: _changeAvatar,
-                        child: Stack(
-                          alignment: Alignment.bottomRight,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                              child: avatar,
-                            ),
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: const BoxDecoration(color: Colors.blue, shape: BoxShape.circle),
-                              child: const Icon(Icons.edit, size: 16, color: Colors.white),
-                            ),
-                          ],
+      backgroundColor: const Color(0xFFF3F6FB),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : CustomScrollView(
+              slivers: [
+                SliverAppBar(
+                  pinned: true,
+                  expandedHeight: 260,
+                  backgroundColor: Colors.blue.shade700,
+                  foregroundColor: Colors.white,
+                  title: const Text('Thông tin sinh viên'),
+                  flexibleSpace: FlexibleSpaceBar(
+                    background: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Colors.blue.shade700, Colors.blue.shade500],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      Text(fullName, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 6),
-                      Text('Chạm vào ảnh đại diện để thay đổi', style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 12.5)),
-                      const SizedBox(height: 18),
-                    ],
+                      child: SafeArea(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              GestureDetector(
+                                onTap: _changeAvatar,
+                                child: Stack(
+                                  alignment: Alignment.bottomRight,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                                      child: avatar,
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: const BoxDecoration(color: Colors.blue, shape: BoxShape.circle),
+                                      child: const Icon(Icons.edit, size: 16, color: Colors.white),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                fullName,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Chạm vào ảnh đại diện để thay đổi',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 12.5),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-            actions: const [],
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Card(
-                elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                child: Column(
-                  children: [
-                    _infoTile('Trạng thái', status),
-                    _divider(),
-                    _infoTile('Giới tính', gender),
-                    _divider(),
-                    _infoTile('Ngày sinh', birthDate),
-                    _divider(),
-                    _infoTile('MSSV', studentCode),
-                    _divider(),
-                    _infoTile('Lớp', className),
-                    _divider(),
-                    _infoTile('Số điện thoại', phone),
-                    _divider(),
-                    _infoTile('Email', email),
-                  ],
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _chip('Vai trò: ${role == 'student' ? 'Sinh viên' : role}', Colors.blue),
+                            _chip('Trạng thái: $status', Colors.green),
+                            _chip('Lớp: $className', Colors.purple),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        Card(
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                          child: Column(
+                            children: [
+                              _infoTile('MSSV', studentCode),
+                              _divider(),
+                              _infoTile('Họ tên', fullName),
+                              _divider(),
+                              _infoTile('Giới tính', gender),
+                              _divider(),
+                              _infoTile('Ngày sinh', birthDate),
+                              _divider(),
+                              _infoTile('Lớp', className),
+                              _divider(),
+                              _infoTile('Số điện thoại', phone),
+                              _divider(),
+                              _infoTile('Email', email),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Card(
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Thao tác nhanh', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        onPressed: _changeAvatar,
+                                        icon: const Icon(Icons.photo_camera),
+                                        label: const Text('Đổi ảnh'),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: ElevatedButton.icon(
+                                        onPressed: _changePassword,
+                                        icon: const Icon(Icons.lock_reset),
+                                        label: const Text('Đổi mật khẩu'),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 
   Widget _divider() => Divider(height: 1, thickness: 1, color: Colors.grey.shade200);
+
+  Widget _chip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.18)),
+      ),
+      child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12)),
+    );
+  }
 
   Widget _infoTile(String label, String value) {
     return Padding(

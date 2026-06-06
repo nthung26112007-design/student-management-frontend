@@ -4,11 +4,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'account_screen.dart';
 import 'attendance_screen.dart';
-import 'curriculum_screen.dart';
+import 'schedules_screen.dart';
 import 'grades_screen.dart';
 import 'students_grades_screen.dart';
 import 'students_screen.dart';
-import 'schedules_screen.dart';
 import 'tuition_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -24,11 +23,21 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoading = true;
   int? _studentId;
   int _selectedMenuIndex = 0;
-  final GlobalKey<NavigatorState> _contentNavKey = GlobalKey<NavigatorState>();
   final TextEditingController _studentSearchController = TextEditingController();
   List<Map<String, dynamic>> _studentsPanel = [];
   List<Map<String, dynamic>> _studentsPanelFiltered = [];
   bool _studentsPanelLoading = false;
+  List<Map<String, dynamic>> _gradesPanel = [];
+  bool _gradesPanelLoading = false;
+  List<Map<String, dynamic>> _attendancePanel = [];
+  bool _attendancePanelLoading = false;
+  List<Map<String, dynamic>> _schedulesPanel = [];
+  bool _schedulesPanelLoading = false;
+  List<Map<String, dynamic>> _tuitionPanel = [];
+  bool _tuitionPanelLoading = false;
+  List<Map<String, dynamic>> _curriculumPanel = [];
+  bool _curriculumPanelLoading = false;
+  int _desktopSelectedIndex = 0;
 
   @override
   void initState() {
@@ -48,6 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_role == 'admin' || _role == 'teacher') {
       await _loadStudentsPanel();
     }
+    await _loadExtraPanels();
   }
 
   Future<void> _loadStudentsPanel() async {
@@ -68,6 +78,98 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     } finally {
       if (mounted) setState(() => _studentsPanelLoading = false);
+    }
+  }
+
+  Future<void> _loadExtraPanels() async {
+    final tasks = <Future<void>>[
+      _loadGradesPanel(),
+      _loadSchedulesPanel(),
+      _loadCurriculumPanel(),
+    ];
+
+    if (_role == 'student' && _studentId != null) {
+      tasks.add(_loadAttendancePanel());
+      tasks.add(_loadTuitionPanel());
+    }
+
+    await Future.wait(tasks);
+  }
+
+  Future<void> _loadGradesPanel() async {
+    setState(() => _gradesPanelLoading = true);
+    try {
+      if (_studentId != null) {
+        final data = await ApiService.getGrades(_studentId!);
+        final list = data is List ? data.map((e) => Map<String, dynamic>.from(e)).toList() : <Map<String, dynamic>>[];
+        if (!mounted) return;
+        setState(() => _gradesPanel = list);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _gradesPanel = []);
+    } finally {
+      if (mounted) setState(() => _gradesPanelLoading = false);
+    }
+  }
+
+  Future<void> _loadAttendancePanel() async {
+    setState(() => _attendancePanelLoading = true);
+    try {
+      final data = await ApiService.getAttendanceSummary(studentId: _studentId);
+      final list = data is List ? data.map((e) => Map<String, dynamic>.from(e)).toList() : <Map<String, dynamic>>[];
+      if (!mounted) return;
+      setState(() => _attendancePanel = list);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _attendancePanel = []);
+    } finally {
+      if (mounted) setState(() => _attendancePanelLoading = false);
+    }
+  }
+
+  Future<void> _loadSchedulesPanel() async {
+    setState(() => _schedulesPanelLoading = true);
+    try {
+      final data = await ApiService.getSchedules();
+      final list = data is List ? data.map((e) => Map<String, dynamic>.from(e)).toList() : <Map<String, dynamic>>[];
+      if (!mounted) return;
+      setState(() => _schedulesPanel = list);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _schedulesPanel = []);
+    } finally {
+      if (mounted) setState(() => _schedulesPanelLoading = false);
+    }
+  }
+
+  Future<void> _loadTuitionPanel() async {
+    setState(() => _tuitionPanelLoading = true);
+    try {
+      final data = await ApiService.getTuitionInvoices(studentId: _studentId);
+      final list = data is List ? data.map((e) => Map<String, dynamic>.from(e)).toList() : <Map<String, dynamic>>[];
+      if (!mounted) return;
+      setState(() => _tuitionPanel = list);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _tuitionPanel = []);
+    } finally {
+      if (mounted) setState(() => _tuitionPanelLoading = false);
+    }
+  }
+
+  Future<void> _loadCurriculumPanel() async {
+    setState(() => _curriculumPanelLoading = true);
+    try {
+      final data = await ApiService.getCourses();
+      final list = data is List ? data.map((e) => Map<String, dynamic>.from(e)).toList() : <Map<String, dynamic>>[];
+      if (!mounted) return;
+      setState(() => _curriculumPanel = list);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _curriculumPanel = []);
+    } finally {
+      if (mounted) setState(() => _curriculumPanelLoading = false);
     }
   }
 
@@ -221,39 +323,37 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<_MenuTileData> _getMenuItems() {
-    final list = <_MenuTileData>[];
     if (_role == 'admin') {
-      list.addAll([
-        _MenuTileData(Icons.dashboard, 'Tổng quan', Colors.purple, () => setState(() => _selectedMenuIndex = 0)),
-        _MenuTileData(Icons.people, 'Quản lý sinh viên', Colors.blue, () => setState(() => _selectedMenuIndex = 1)),
-        _MenuTileData(Icons.school, 'Chương trình khung', Colors.green, () => setState(() => _selectedMenuIndex = 2)),
-        _MenuTileData(Icons.grade, 'Quản lý điểm', Colors.orange, () => setState(() => _selectedMenuIndex = 3)),
-        _MenuTileData(Icons.event_available, 'Điểm danh', Colors.teal, () => setState(() => _selectedMenuIndex = 4)),
-        _MenuTileData(Icons.account_balance_wallet, 'Học phí', Colors.deepOrange, () => setState(() => _selectedMenuIndex = 5)),
-        _MenuTileData(Icons.event, 'Lịch học / thi', Colors.purple, () => setState(() => _selectedMenuIndex = 6)),
-        _MenuTileData(Icons.lock_reset, 'Đổi mật khẩu', Colors.indigo, () => setState(() => _selectedMenuIndex = 7)),
-      ]);
-    } else if (_role == 'teacher') {
-      list.addAll([
-        _MenuTileData(Icons.dashboard, 'Tổng quan', Colors.purple, () => setState(() => _selectedMenuIndex = 0)),
-        _MenuTileData(Icons.school, 'Chương trình khung', Colors.green, () => setState(() => _selectedMenuIndex = 1)),
-        _MenuTileData(Icons.grade, 'Nhập điểm', Colors.orange, () => setState(() => _selectedMenuIndex = 2)),
-        _MenuTileData(Icons.event_available, 'Điểm danh', Colors.teal, () => setState(() => _selectedMenuIndex = 3)),
-        _MenuTileData(Icons.event, 'Lịch học / thi', Colors.purple, () => setState(() => _selectedMenuIndex = 4)),
-        _MenuTileData(Icons.lock_reset, 'Đổi mật khẩu', Colors.indigo, () => setState(() => _selectedMenuIndex = 5)),
-      ]);
-    } else {
-      list.addAll([
-        _MenuTileData(Icons.dashboard, 'Tổng quan', Colors.purple, () => setState(() => _selectedMenuIndex = 0)),
-        _MenuTileData(Icons.school, 'Chương trình khung', Colors.green, () => setState(() => _selectedMenuIndex = 1)),
-        _MenuTileData(Icons.grade, 'Xem điểm', Colors.blue, () => setState(() => _selectedMenuIndex = 2)),
-        _MenuTileData(Icons.account_balance_wallet, 'Học phí của tôi', Colors.deepOrange, () => setState(() => _selectedMenuIndex = 3)),
-        _MenuTileData(Icons.event, 'Lịch học / thi', Colors.purple, () => setState(() => _selectedMenuIndex = 4)),
-        _MenuTileData(Icons.lock_reset, 'Đổi mật khẩu', Colors.indigo, () => setState(() => _selectedMenuIndex = 5)),
-        _MenuTileData(Icons.person, 'Thông tin cá nhân', Colors.purple, () => setState(() => _selectedMenuIndex = 6)),
-      ]);
+      return [
+        _MenuTileData(Icons.dashboard, 'Tổng quan', Colors.purple, () => setState(() => _desktopSelectedIndex = 0)),
+        _MenuTileData(Icons.people, 'Quản lý sinh viên', Colors.blue, () => setState(() => _desktopSelectedIndex = 1)),
+        _MenuTileData(Icons.school, 'Chương trình khung', Colors.green, () => setState(() => _desktopSelectedIndex = 2)),
+        _MenuTileData(Icons.grade, 'Quản lý điểm', Colors.orange, () => setState(() => _desktopSelectedIndex = 3)),
+        _MenuTileData(Icons.event_available, 'Điểm danh', Colors.teal, () => setState(() => _desktopSelectedIndex = 4)),
+        _MenuTileData(Icons.account_balance_wallet, 'Quản lý học phí', Colors.deepOrange, () => setState(() => _desktopSelectedIndex = 5)),
+        _MenuTileData(Icons.event, 'Lịch học / thi', Colors.purple, () => setState(() => _desktopSelectedIndex = 6)),
+        _MenuTileData(Icons.lock_reset, 'Đổi mật khẩu', Colors.indigo, () => setState(() => _desktopSelectedIndex = 7)),
+      ];
     }
-    return list;
+    if (_role == 'teacher') {
+      return [
+        _MenuTileData(Icons.dashboard, 'Tổng quan', Colors.purple, () => setState(() => _desktopSelectedIndex = 0)),
+        _MenuTileData(Icons.school, 'Chương trình khung', Colors.green, () => setState(() => _desktopSelectedIndex = 1)),
+        _MenuTileData(Icons.grade, 'Nhập điểm', Colors.orange, () => setState(() => _desktopSelectedIndex = 2)),
+        _MenuTileData(Icons.event_available, 'Điểm danh', Colors.teal, () => setState(() => _desktopSelectedIndex = 3)),
+        _MenuTileData(Icons.event, 'Lịch học / thi', Colors.purple, () => setState(() => _desktopSelectedIndex = 4)),
+        _MenuTileData(Icons.lock_reset, 'Đổi mật khẩu', Colors.indigo, () => setState(() => _desktopSelectedIndex = 5)),
+      ];
+    }
+    return [
+      _MenuTileData(Icons.dashboard, 'Tổng quan', Colors.purple, () => setState(() => _desktopSelectedIndex = 0)),
+      _MenuTileData(Icons.school, 'Chương trình khung', Colors.green, () => setState(() => _desktopSelectedIndex = 1)),
+      _MenuTileData(Icons.grade, 'Kỳ thi / KQHT', Colors.blue, () => setState(() => _desktopSelectedIndex = 2)),
+      _MenuTileData(Icons.account_balance_wallet, 'Học phí của tôi', Colors.deepOrange, () => setState(() => _desktopSelectedIndex = 3)),
+      _MenuTileData(Icons.event, 'Lịch học / thi', Colors.purple, () => setState(() => _desktopSelectedIndex = 4)),
+      _MenuTileData(Icons.lock_reset, 'Đổi mật khẩu', Colors.indigo, () => setState(() => _desktopSelectedIndex = 5)),
+      _MenuTileData(Icons.person, 'Thông tin cá nhân', Colors.purple, () => setState(() => _desktopSelectedIndex = 6)),
+    ];
   }
 
   String _getRoleLabel() {
@@ -394,10 +494,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildSimplePanel(String title, String description, IconData icon, Color color) {
     return Container(
       color: const Color(0xFFF7FAFF),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       child: Center(
         child: Container(
-          constraints: const BoxConstraints(maxWidth: 520),
+          constraints: const BoxConstraints(maxWidth: 640),
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
             color: Colors.white,
@@ -409,9 +509,20 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               CircleAvatar(radius: 32, backgroundColor: color.withOpacity(0.12), child: Icon(icon, color: color, size: 32)),
               const SizedBox(height: 16),
-              Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+              Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
               const SizedBox(height: 8),
-              Text(description, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade700)),
+              Text(description, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade700, height: 1.35)),
+              const SizedBox(height: 18),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                alignment: WrapAlignment.center,
+                children: [
+                  _QuickInfoChip(label: 'Dữ liệu thật', color: color),
+                  _QuickInfoChip(label: 'Đang cập nhật', color: color),
+                  _QuickInfoChip(label: 'Dashboard', color: color),
+                ],
+              ),
             ],
           ),
         ),
@@ -419,12 +530,108 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _infoCard({required String title, required String subtitle, required IconData icon, required Color color}) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withOpacity(0.10)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 5))],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
+            child: Icon(icon, color: color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
+                Text(subtitle, style: TextStyle(color: Colors.grey.shade700, fontSize: 12.5)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildCurriculumPanel() {
-    return CurriculumScreen(role: _role);
+    return Container(
+      color: const Color(0xFFF7FAFF),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text('Chương trình khung', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+              ),
+              IconButton(onPressed: _loadCurriculumPanel, icon: const Icon(Icons.refresh)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: _curriculumPanelLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _curriculumPanel.isEmpty
+                    ? const Center(child: Text('Chưa có dữ liệu chương trình khung'))
+                    : ListView.separated(
+                        itemCount: _curriculumPanel.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (_, index) {
+                          final item = _curriculumPanel[index];
+                          return _infoCard(
+                            title: '${item['subject_name'] ?? item['name'] ?? 'Môn học'}',
+                            subtitle: 'Mã: ${item['subject_code'] ?? item['code'] ?? '--'} • TC: ${item['credits'] ?? item['credit'] ?? '--'}',
+                            icon: Icons.school,
+                            color: Colors.green,
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildAttendancePanel() {
     return const AttendanceScreen();
+  }
+
+  Widget _buildGradesPanel() {
+    return StudentsGradesScreen(
+      studentId: _studentId,
+      studentName: _username,
+      role: _role,
+    );
+  }
+
+  Widget _buildTuitionPanel() {
+    return TuitionScreen(role: _role, studentId: _studentId);
+  }
+
+  Widget _buildSchedulesPanel() {
+    return const SchedulesScreen();
+  }
+
+  Widget _buildStudentGradesPanel() {
+    if (_studentId == null) {
+      return _buildInfoPlaceholder('Không tìm thấy sinh viên trong phiên đăng nhập.');
+    }
+    return GradesScreen(
+      studentId: _studentId!,
+      studentName: _username,
+      role: _role,
+    );
   }
 
   Widget _buildFeatureWidget(int selected) {
@@ -456,7 +663,7 @@ class _HomeScreenState extends State<HomeScreen> {
           case 1:
             return _buildCurriculumPanel();
           case 2:
-            return _buildSimplePanel('Nhập điểm', 'Màn nhập điểm sẽ được hiển thị tại đây.', Icons.grade, Colors.orange);
+            return _buildGradesPanel();
           case 3:
             return _buildAttendancePanel();
           case 4:
@@ -491,18 +698,49 @@ class _HomeScreenState extends State<HomeScreen> {
     final cards = _getMenuItems().map((e) => _MenuCard(data: e)).toList();
     return Container(
       color: const Color(0xFFF7FAFF),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Bảng điều khiển', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          Text('Chọn một chức năng bên trái hoặc bấm thẻ bên dưới.', style: TextStyle(color: Colors.grey.shade700)),
-          const SizedBox(height: 18),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [Colors.purple.shade700, Colors.purple.shade500]),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [BoxShadow(color: Colors.purple.withOpacity(0.15), blurRadius: 14, offset: const Offset(0, 6))],
+            ),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Bảng điều khiển', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
+                SizedBox(height: 8),
+                Text('Chạm vào các thẻ bên dưới để mở chức năng tương ứng.', style: TextStyle(color: Colors.white70, height: 1.35)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildInfoChip('Sinh viên', Colors.blue),
+              _buildInfoChip('Điểm danh', Colors.teal),
+              _buildInfoChip('Chương trình', Colors.green),
+              _buildInfoChip('Học phí', Colors.deepOrange),
+            ],
+          ),
+          const SizedBox(height: 16),
           Expanded(
             child: GridView.builder(
+              padding: EdgeInsets.zero,
               itemCount: cards.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 1.2),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 1.05,
+              ),
               itemBuilder: (_, i) => cards[i],
             ),
           ),
@@ -511,24 +749,18 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildSchedulesPanel() {
-    return const SchedulesScreen();
+  Widget _buildInfoChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.18)),
+      ),
+      child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12)),
+    );
   }
 
-  Widget _buildStudentGradesPanel() {
-    if (_studentId == null) {
-      return _buildInfoPlaceholder('Không tìm thấy sinh viên trong phiên đăng nhập.');
-    }
-    return GradesScreen(studentId: _studentId!, studentName: _username, role: _role);
-  }
-
-  Widget _buildGradesPanel() {
-    return StudentsGradesScreen(role: _role);
-  }
-
-  Widget _buildTuitionPanel() {
-    return TuitionScreen(studentId: _studentId, role: _role);
-  }
 
   Widget _buildPasswordCard() {
     return Center(
@@ -550,13 +782,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
-  }
-
-  Widget _studentGradesWidget() {
-    if (_studentId == null) {
-      return _buildInfoPlaceholder('Không tìm thấy mã sinh viên trong phiên đăng nhập.');
-    }
-    return GradesScreen(studentId: _studentId!, studentName: _username, role: _role);
   }
 
   Widget _buildProfileCard() {
@@ -587,6 +812,62 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildSidebar(List<_MenuTileData> items, int selected) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [Colors.purple.shade900, Colors.purple.shade700], begin: Alignment.topLeft, end: Alignment.bottomRight),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
+            child: Row(
+              children: [
+                CircleAvatar(radius: 24, backgroundColor: Colors.white.withOpacity(0.18), child: const Icon(Icons.school, color: Colors.white)),
+                const SizedBox(width: 12),
+                const Expanded(child: Text('Student Management', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800))),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Text('Xin chào, ${_username.isNotEmpty ? _username : _getRoleLabel()}', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(999)),
+              child: Text(_getRoleLabel(), style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+            ),
+          ),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              itemCount: items.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, index) => _SideMenuTile(data: items[index], selected: index == selected),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: BorderSide(color: Colors.white.withOpacity(0.35))),
+                onPressed: _logout,
+                icon: const Icon(Icons.logout),
+                label: const Text('Đăng xuất'),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -594,70 +875,28 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final items = _getMenuItems();
+    final selected = _desktopSelectedIndex.clamp(0, items.length - 1);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF3F6FB),
+      appBar: MediaQuery.of(context).size.width < 900
+          ? AppBar(
+              backgroundColor: Colors.purple.shade700,
+              foregroundColor: Colors.white,
+              title: const Text('Student Management'),
+            )
+          : null,
+      drawer: MediaQuery.of(context).size.width < 900
+          ? Drawer(
+              child: SafeArea(
+                child: _buildSidebar(items, selected),
+              ),
+            )
+          : null,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
             final isWide = constraints.maxWidth >= 900;
-            final selected = _selectedMenuIndex.clamp(0, items.length - 1);
-
-            final sidebar = Container(
-              width: isWide ? 300 : double.infinity,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [Colors.purple.shade900, Colors.purple.shade700], begin: Alignment.topLeft, end: Alignment.bottomRight),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 12),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
-                    child: Row(
-                      children: [
-                        CircleAvatar(radius: 24, backgroundColor: Colors.white.withOpacity(0.18), child: const Icon(Icons.school, color: Colors.white)),
-                        const SizedBox(width: 12),
-                        const Expanded(child: Text('Student Management', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800))),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Text('Xin chào, ${_username.isNotEmpty ? _username : _getRoleLabel()}', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(999)),
-                      child: Text(_getRoleLabel(), style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
-                    ),
-                  ),
-                  Expanded(
-                    child: ListView.separated(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      itemCount: items.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (context, index) => _SideMenuTile(data: items[index], selected: index == selected),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: BorderSide(color: Colors.white.withOpacity(0.35))),
-                        onPressed: _logout,
-                        icon: const Icon(Icons.logout),
-                        label: const Text('Đăng xuất'),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-
             final content = SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -669,9 +908,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             );
-
-            if (isWide) return Row(children: [sidebar, Expanded(child: content)]);
-            return Column(children: [sidebar, Expanded(child: content)]);
+            if (isWide) return Row(children: [SizedBox(width: 300, child: _buildSidebar(items, selected)), Expanded(child: content)]);
+            return content;
           },
         ),
       ),
@@ -730,6 +968,25 @@ class _SideMenuTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _QuickInfoChip extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _QuickInfoChip({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.20)),
+      ),
+      child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12)),
     );
   }
 }

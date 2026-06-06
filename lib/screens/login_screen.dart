@@ -76,7 +76,13 @@ class _LoginScreenState extends State<LoginScreen> {
         }
 
         if (!mounted) return;
-        Navigator.pushReplacementNamed(context, '/home');
+        final role = user['role']?.toString();
+        final route = role == 'admin'
+            ? '/admin'
+            : role == 'teacher'
+                ? '/teacher'
+                : '/home';
+        Navigator.pushReplacementNamed(context, route);
       } else {
         setState(() {
           _errorMessage = result['message'] ?? result['error'] ?? 'Sai tài khoản hoặc mật khẩu';

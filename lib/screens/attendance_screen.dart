@@ -206,20 +206,31 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FB),
+      backgroundColor: const Color(0xFFF3F6FB),
       appBar: AppBar(
-        title: const Text('Điểm danh theo ngày & lớp'),
+        title: const Text('Điểm danh'),
         backgroundColor: Colors.teal.shade700,
         foregroundColor: Colors.white,
         elevation: 0,
       ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildHeader(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _infoChip('Có mặt: $_presentCount', Colors.green),
+                  _infoChip('Vắng phép: $_excusedCount', Colors.orange),
+                  _infoChip('Vắng: $_absentCount', Colors.red),
+                ],
+              ),
+              const SizedBox(height: 14),
               Expanded(
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
@@ -241,7 +252,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   Widget _buildHeader() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [Colors.teal.shade700, Colors.teal.shade500],
@@ -256,10 +267,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Điểm danh theo ngày & lớp', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+          const Text('Điểm danh', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
           const SizedBox(height: 6),
           Text(
-            'Chọn ngày, chọn lớp, tải danh sách sinh viên và lưu điểm danh nhanh chóng.',
+            'Giao diện theo kiểu web dashboard: thiết lập buổi điểm danh, đánh dấu sinh viên và xem thống kê.',
             style: TextStyle(color: Colors.white.withOpacity(0.9), height: 1.35),
           ),
           const SizedBox(height: 14),
@@ -274,6 +285,18 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _infoChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.18)),
+      ),
+      child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12)),
     );
   }
 

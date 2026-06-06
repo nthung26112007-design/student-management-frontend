@@ -213,129 +213,12 @@ class _StudentsScreenState extends State<StudentsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
+      backgroundColor: const Color(0xFFF3F6FB),
       appBar: AppBar(
-        title: const Text('Danh sách sinh viên'),
-        elevation: 0,
-        centerTitle: false,
+        title: const Text('Quản lý sinh viên'),
         backgroundColor: Colors.blue.shade700,
         foregroundColor: Colors.white,
-        actions: const [],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: 'Tìm theo tên, mã SV, lớp...',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () => _searchController.clear(),
-                        )
-                      : null,
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _filteredStudents.isEmpty
-                    ? Center(
-                        child: Text(
-                          _searchController.text.isNotEmpty
-                              ? 'Không tìm thấy sinh viên'
-                              : 'Chưa có sinh viên',
-                          style: const TextStyle(fontSize: 16, color: Colors.grey),
-                        ),
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                        itemCount: _filteredStudents.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (context, index) {
-                          final student = _filteredStudents[index];
-                          final birthDate = _formatDate(student['birth_date']);
-                          final gender = student['gender'] ?? '';
-                          final subtitle =
-                              'ID: ${student['id']}  •  MSSV: ${student['student_code']}  •  ${student['class_name']}'
-                              '${gender.isNotEmpty ? ' • $gender' : ''}'
-                              '${birthDate.isNotEmpty ? '\n$birthDate' : ''}';
-                          return Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(18),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.05),
-                                  blurRadius: 14,
-                                  offset: const Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                            child: ListTile(
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                              leading: CircleAvatar(
-                                radius: 22,
-                                backgroundColor: Colors.blue.shade50,
-                                child: Text(
-                                  (student['full_name'] ?? '?').toString().isNotEmpty
-                                      ? student['full_name'][0].toString().toUpperCase()
-                                      : '?',
-                                  style: TextStyle(
-                                    color: Colors.blue.shade700,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                              title: Text(
-                                student['full_name'],
-                                style: const TextStyle(fontWeight: FontWeight.w700),
-                              ),
-                              subtitle: Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Text(subtitle),
-                              ),
-                              isThreeLine: birthDate.isNotEmpty,
-                              trailing: _role == 'admin'
-                                  ? Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          icon: const Icon(Icons.edit, color: Colors.blue),
-                                          onPressed: () => _showForm(student: student),
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.delete, color: Colors.red),
-                                          onPressed: () => _deleteStudent(student['id']),
-                                        ),
-                                      ],
-                                    )
-                                  : null,
-                            ),
-                          );
-                        },
-                      ),
-          ),
-        ],
+        elevation: 0,
       ),
       floatingActionButton: _role == 'admin'
           ? FloatingActionButton.extended(
@@ -344,6 +227,146 @@ class _StudentsScreenState extends State<StudentsScreen> {
               label: const Text('Thêm sinh viên'),
             )
           : null,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [Colors.blue.shade700, Colors.blue.shade500]),
+                  borderRadius: BorderRadius.circular(22),
+                  boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.14), blurRadius: 16, offset: const Offset(0, 8))],
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Danh sách sinh viên', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+                    SizedBox(height: 6),
+                    Text('Tìm kiếm, xem nhanh và quản lý dữ liệu sinh viên theo phong cách dashboard.', style: TextStyle(color: Colors.white70, height: 1.35)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _infoChip('Tìm theo tên', Colors.blue),
+                  _infoChip('Theo mã SV', Colors.teal),
+                  _infoChip('Theo lớp', Colors.green),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 16, offset: const Offset(0, 6))],
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (_) => _onSearchChanged(),
+                  decoration: InputDecoration(
+                    hintText: 'Tìm theo tên, mã SV, lớp...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchController.clear();
+                              _onSearchChanged();
+                            },
+                          )
+                        : null,
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _filteredStudents.isEmpty
+                        ? Center(
+                            child: Text(
+                              _searchController.text.isNotEmpty ? 'Không tìm thấy sinh viên' : 'Chưa có sinh viên',
+                              style: const TextStyle(fontSize: 16, color: Colors.grey),
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: _filteredStudents.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: 10),
+                            itemBuilder: (context, index) {
+                              final student = _filteredStudents[index];
+                              final birthDate = _formatDate(student['birth_date']);
+                              final gender = student['gender'] ?? '';
+                              final subtitle =
+                                  'ID: ${student['id']}  •  MSSV: ${student['student_code']}  •  ${student['class_name']}'
+                                  '${gender.isNotEmpty ? ' • $gender' : ''}'
+                                  '${birthDate.isNotEmpty ? '\n$birthDate' : ''}';
+                              return Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(18),
+                                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 14, offset: const Offset(0, 6))],
+                                ),
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                  leading: CircleAvatar(
+                                    radius: 22,
+                                    backgroundColor: Colors.blue.shade50,
+                                    child: Text(
+                                      (student['full_name'] ?? '?').toString().isNotEmpty ? student['full_name'][0].toString().toUpperCase() : '?',
+                                      style: TextStyle(color: Colors.blue.shade700, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                  title: Text(student['full_name'], style: const TextStyle(fontWeight: FontWeight.w700)),
+                                  subtitle: Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Text(subtitle),
+                                  ),
+                                  isThreeLine: birthDate.isNotEmpty,
+                                  trailing: _role == 'admin'
+                                      ? Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            IconButton(
+                                              icon: const Icon(Icons.edit, color: Colors.blue),
+                                              onPressed: () => _showForm(student: student),
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(Icons.delete, color: Colors.red),
+                                              onPressed: () => _deleteStudent(student['id']),
+                                            ),
+                                          ],
+                                        )
+                                      : null,
+                                ),
+                              );
+                            },
+                          ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _infoChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.18)),
+      ),
+      child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12)),
     );
   }
 }

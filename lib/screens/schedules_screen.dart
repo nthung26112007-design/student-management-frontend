@@ -55,7 +55,9 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
   Future<void> _loadRole() async {
     final prefs = await SharedPreferences.getInstance();
     _role = prefs.getString('role') ?? '';
+    if (!mounted) return;
     await _loadClasses();
+    if (!mounted) return;
     await _loadItems();
   }
 

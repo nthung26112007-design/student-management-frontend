@@ -28,7 +28,7 @@ class ApiService {
     final token = await getToken();
     return {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer $token',
+      if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
     };
   }
 
@@ -214,6 +214,10 @@ class ApiService {
 
   static Future<void> updateTuitionInvoice(int id, Map<String, dynamic> data) async {
     await http.put(Uri.parse('$baseUrl/fees/invoices/$id'), headers: await authHeaders(), body: jsonEncode(data));
+  }
+
+  static Future<void> deleteTuitionInvoice(int id) async {
+    await http.delete(Uri.parse('$baseUrl/fees/invoices/$id'), headers: await authHeaders());
   }
 
   static Future<List> getTuitionPayments({int? studentId}) async {
