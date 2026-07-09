@@ -9,6 +9,7 @@ import 'grades_screen.dart';
 import 'students_grades_screen.dart';
 import 'students_screen.dart';
 import 'tuition_screen.dart';
+import 'curriculum_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -85,7 +86,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final tasks = <Future<void>>[
       _loadGradesPanel(),
       _loadSchedulesPanel(),
-      _loadCurriculumPanel(),
     ];
 
     if (_role == 'student' && _studentId != null) {
@@ -564,43 +564,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildCurriculumPanel() {
-    return Container(
-      color: const Color(0xFFF7FAFF),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text('Chương trình khung', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-              ),
-              IconButton(onPressed: _loadCurriculumPanel, icon: const Icon(Icons.refresh)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: _curriculumPanelLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _curriculumPanel.isEmpty
-                    ? const Center(child: Text('Chưa có dữ liệu chương trình khung'))
-                    : ListView.separated(
-                        itemCount: _curriculumPanel.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (_, index) {
-                          final item = _curriculumPanel[index];
-                          return _infoCard(
-                            title: '${item['subject_name'] ?? item['name'] ?? 'Môn học'}',
-                            subtitle: 'Mã: ${item['subject_code'] ?? item['code'] ?? '--'} • TC: ${item['credits'] ?? item['credit'] ?? '--'}',
-                            icon: Icons.school,
-                            color: Colors.green,
-                          );
-                        },
-                      ),
-          ),
-        ],
-      ),
-    );
+    return CurriculumScreen(role: _role, embedded: true);
   }
 
   Widget _buildAttendancePanel() {

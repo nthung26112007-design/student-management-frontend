@@ -3,7 +3,8 @@ import '../services/api_service.dart';
 
 class CurriculumScreen extends StatefulWidget {
   final String role;
-  const CurriculumScreen({super.key, required this.role});
+  final bool embedded;
+  const CurriculumScreen({super.key, required this.role, this.embedded = false});
 
   @override
   State<CurriculumScreen> createState() => _CurriculumScreenState();
@@ -14,6 +15,7 @@ class _CurriculumScreenState extends State<CurriculumScreen> {
   final Map<int, List<Map<String, dynamic>>> _coursesBySemester = {};
   final Set<int> _expandedSemesterIds = {};
   bool _loading = true;
+  String? _loadError;
 
   final _semesterNameController = TextEditingController();
   final _semesterStartController = TextEditingController();
@@ -51,15 +53,18 @@ class _CurriculumScreenState extends State<CurriculumScreen> {
   }
 
   Future<void> _loadData() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
     try {
       final semesters = await ApiService.getSemesters();
-      final semesterList = (semesters is List) ? semesters.map((e) => Map<String, dynamic>.from(e)).toList() : <Map<String, dynamic>>[];
+      final semesterList = semesters.map((e) => Map<String, dynamic>.from(e as Map<String, dynamic>)).toList();
       _coursesBySemester.clear();
       for (final sem in semesterList) {
         final semesterId = sem['id'] as int;
         final courses = await ApiService.getCourses(semesterId: semesterId);
-        _coursesBySemester[semesterId] = (courses is List) ? courses.map((e) => Map<String, dynamic>.from(e)).toList() : <Map<String, dynamic>>[];
+        _coursesBySemester[semesterId] = courses.map((e) => Map<String, dynamic>.from(e as Map<String, dynamic>)).toList();
       }
       if (!mounted) return;
       setState(() {
@@ -69,8 +74,12 @@ class _CurriculumScreenState extends State<CurriculumScreen> {
         if (_semesters.isNotEmpty) _expandedSemesterIds.add(_semesters.first['id'] as int);
         _loading = false;
       });
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.toString();
+        _loading = false;
+      });
     }
   }
 
@@ -91,8 +100,11 @@ class _CurriculumScreenState extends State<CurriculumScreen> {
       }
       _clearSemesterForm();
       await _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_editingSemesterId == null ? 'Đã thêm học kỳ' : 'Đã lưu học kỳ')));
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không lưu được học kỳ: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không lưu được học kỳ: $e')));
     }
   }
 
@@ -122,8 +134,11 @@ class _CurriculumScreenState extends State<CurriculumScreen> {
       }
       _clearCourseForm();
       await _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_editingCourseId == null ? 'Đã thêm môn học' : 'Đã lưu môn học')));
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không lưu được môn học: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không lưu được môn học: $e')));
     }
   }
 
@@ -145,17 +160,27 @@ class _CurriculumScreenState extends State<CurriculumScreen> {
   }
 
   Future<void> _confirmDeleteSemester(Map<String, dynamic> semester) async {
-    final ok = await _confirmDialog('Xóa học kỳ', 'Bạn có chắc muốn xóa học kỳ này?');
+    final ok = await _confirmDialog('Xóa học kỳ', 'Bạn có chắc muốn xóa học kỳ "${semester['name'] ?? semester['semester_name'] ?? ''}"?');
     if (!ok) return;
-    await ApiService.deleteSemester(semester['id'] as int);
-    await _loadData();
+    try {
+      await ApiService.deleteSemester(semester['id'] as int);
+      await _loadData();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã xóa học kỳ')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không xóa được học kỳ: $e')));
+    }
   }
 
   Future<void> _confirmDeleteCourse(Map<String, dynamic> course) async {
-    final ok = await _confirmDialog('Xóa môn học', 'Bạn có chắc muốn xóa môn học này?');
+    final ok = await _confirmDialog('Xóa môn học', 'Bạn có chắc muốn xóa môn "${course['subject_name'] ?? course['name'] ?? ''}"?');
     if (!ok) return;
-    await ApiService.deleteCourse(course['id'] as int);
-    await _loadData();
+    try {
+      await ApiService.deleteCourse(course['id'] as int);
+      await _loadData();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã xóa môn học')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không xóa được môn học: $e')));
+    }
   }
 
   Future<bool> _confirmDialog(String title, String message) async {
@@ -202,24 +227,59 @@ class _CurriculumScreenState extends State<CurriculumScreen> {
 
   @override
   Widget build(BuildContext context) {
+    Widget content;
+    if (_loading) {
+      content = const Center(child: CircularProgressIndicator());
+    } else if (_loadError != null) {
+      content = Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.redAccent),
+            const SizedBox(height: 12),
+            Text('Không tải được dữ liệu chương trình khung'),
+            const SizedBox(height: 8),
+            ElevatedButton.icon(onPressed: _loadData, icon: const Icon(Icons.refresh), label: const Text('Thử lại')),
+          ],
+        ),
+      );
+    } else if (_semesters.isEmpty) {
+      content = Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.school_outlined, size: 56, color: Colors.grey.shade400),
+            const SizedBox(height: 12),
+            Text('Chưa có kỳ học nào', style: TextStyle(color: Colors.grey.shade700)),
+            if (_canEdit) ...[
+              const SizedBox(height: 6),
+              Text('Hãy dùng form phía trên để thêm học kỳ mới.', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+            ],
+          ],
+        ),
+      );
+    } else {
+      content = ListView(padding: const EdgeInsets.all(16), children: [
+        _buildHeaderCard(),
+        if (_canEdit) ...[
+          const SizedBox(height: 16),
+          _buildAddSemesterCard(),
+          const SizedBox(height: 16),
+          _buildAddCourseCard(),
+        ],
+        const SizedBox(height: 16),
+        ..._semesters.map(_buildSemesterCard),
+      ]);
+    }
+
+    if (widget.embedded) {
+      return Container(color: const Color(0xFFF5F7FB), child: content);
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FB),
       appBar: AppBar(title: const Text('Chương trình khung'), backgroundColor: Colors.blue.shade700, foregroundColor: Colors.white),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _semesters.isEmpty
-              ? const Center(child: Text('Chưa có kỳ học nào'))
-              : ListView(padding: const EdgeInsets.all(16), children: [
-                  _buildHeaderCard(),
-                  if (_canEdit) ...[
-                    const SizedBox(height: 16),
-                    _buildAddSemesterCard(),
-                    const SizedBox(height: 16),
-                    _buildAddCourseCard(),
-                  ],
-                  const SizedBox(height: 16),
-                  ..._semesters.map(_buildSemesterCard),
-                ]),
+      body: content,
     );
   }
 
