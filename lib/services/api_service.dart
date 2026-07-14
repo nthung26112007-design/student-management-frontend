@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 // const String baseUrl = 'http://192.168.100.170:3000/api'; // Android emulator
 const String baseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'https://student-management-backend-199s.onrender.com/api',
+  defaultValue: 'https://student-management-backend-1-ilp9.onrender.com/api',
 );
 
 class ApiService {
@@ -113,8 +113,12 @@ class ApiService {
     await http.put(Uri.parse('$baseUrl/grades/$id'), headers: await authHeaders(), body: jsonEncode(data));
   }
 
-  static Future<List> getSemesters() async {
-    final res = await http.get(Uri.parse('$baseUrl/semesters'), headers: await authHeaders());
+  static Future<List> getSemesters({String? className}) async {
+    var uri = Uri.parse('$baseUrl/semesters');
+    if (className != null) {
+      uri = uri.replace(queryParameters: {'class_name': className});
+    }
+    final res = await http.get(uri, headers: await authHeaders());
     return jsonDecode(res.body);
   }
 
@@ -130,18 +134,52 @@ class ApiService {
     await http.delete(Uri.parse('$baseUrl/semesters/$id'), headers: await authHeaders());
   }
 
-  static Future<List> getCourses({int? semesterId}) async {
-    final url = semesterId != null ? '$baseUrl/courses?semester_id=$semesterId' : '$baseUrl/courses';
+  static Future<List> getCourses({int? semesterId, String? className}) async {
+    final params = <String>[];
+    if (semesterId != null) params.add('semester_id=$semesterId');
+    if (className != null && className.isNotEmpty) params.add('class_name=${Uri.encodeComponent(className)}');
+    final url = params.isNotEmpty ? '$baseUrl/courses?${params.join('&')}' : '$baseUrl/courses';
     final res = await http.get(Uri.parse(url), headers: await authHeaders());
     return jsonDecode(res.body);
   }
 
   static Future<void> addCourse(Map<String, dynamic> data) async {
-    await http.post(Uri.parse('$baseUrl/courses'), headers: await authHeaders(), body: jsonEncode(data));
+    final res = await http.post(Uri.parse('$baseUrl/courses'), headers: await authHeaders(), body: jsonEncode(data));
+    if (res.statusCode >= 400) {
+      String message = 'Lỗi ${res.statusCode}: Không thể thêm môn học';
+      try {
+        final decoded = jsonDecode(res.body);
+        if (decoded is Map) {
+          message = decoded['message']?.toString()
+              ?? decoded['detail']?.toString()
+              ?? decoded['error']?.toString()
+              ?? decoded.toString();
+        } else if (decoded is String) {
+          message = 'Lỗi ${res.statusCode}: $decoded';
+        }
+      } catch (_) {
+        message = 'Lỗi ${res.statusCode}: ${res.body}';
+      }
+      throw Exception(message);
+    }
   }
 
   static Future<void> updateCourse(int id, Map<String, dynamic> data) async {
-    await http.put(Uri.parse('$baseUrl/courses/$id'), headers: await authHeaders(), body: jsonEncode(data));
+    final res = await http.put(Uri.parse('$baseUrl/courses/$id'), headers: await authHeaders(), body: jsonEncode(data));
+    if (res.statusCode >= 400) {
+      String message = 'Lỗi ${res.statusCode}: Không thể cập nhật môn học';
+      try {
+        final decoded = jsonDecode(res.body);
+        if (decoded is Map) {
+          message = decoded['message']?.toString() ?? decoded['error']?.toString() ?? decoded.toString();
+        } else if (decoded is String) {
+          message = 'Lỗi ${res.statusCode}: $decoded';
+        }
+      } catch (_) {
+        message = 'Lỗi ${res.statusCode}: ${res.body}';
+      }
+      throw Exception(message);
+    }
   }
 
   static Future<void> deleteCourse(int id) async {
@@ -155,6 +193,11 @@ class ApiService {
     final url = params.isNotEmpty ? '$baseUrl/attendance/sessions?${params.join('&')}' : '$baseUrl/attendance/sessions';
     final res = await http.get(Uri.parse(url), headers: await authHeaders());
     return jsonDecode(res.body);
+  }
+
+  static Future<Map<String, dynamic>> getAttendanceSession(int id) async {
+    final res = await http.get(Uri.parse('$baseUrl/attendance/sessions/$id'), headers: await authHeaders());
+    return Map<String, dynamic>.from(jsonDecode(res.body));
   }
 
   static Future<Map<String, dynamic>> addAttendanceSession(Map<String, dynamic> data) async {
@@ -171,8 +214,13 @@ class ApiService {
     return jsonDecode(res.body);
   }
 
-  static Future<void> addAttendanceRecordsBulk(Map<String, dynamic> data) async {
-    await http.post(Uri.parse('$baseUrl/attendance/records/bulk'), headers: await authHeaders(), body: jsonEncode(data));
+  static Future<Map<String, dynamic>> addAttendanceRecordsBulk(Map<String, dynamic> data) async {
+    final res = await http.post(Uri.parse('$baseUrl/attendance/records/bulk'), headers: await authHeaders(), body: jsonEncode(data));
+    final decoded = jsonDecode(res.body);
+    if (res.statusCode >= 400) {
+      throw Exception(decoded is Map ? decoded['message']?.toString() ?? decoded.toString() : decoded.toString());
+    }
+    return decoded is Map<String, dynamic> ? decoded : {'raw': decoded};
   }
 
   static Future<void> updateAttendanceRecord(int id, Map<String, dynamic> data) async {

@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
-import 'screens/home_screen.dart';
 import 'screens/admin_dashboard_screen.dart';
 import 'screens/teacher_dashboard_screen.dart';
-import 'screens/admin_dashboard_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -71,7 +69,7 @@ class MyApp extends StatelessWidget {
       initialRoute: '/',
       routes: {
         '/': (context) => const LoginScreen(),
-        '/home': (context) => const HomeScreen(),
+        '/home': (context) => const AdminDashboardScreen(),
         '/admin': (context) => const AdminDashboardScreen(),
         '/teacher': (context) => const TeacherDashboardScreen(),
       },

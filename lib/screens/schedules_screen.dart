@@ -1,757 +1,1320 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../services/api_service.dart';
+import '../services/mock_data_service.dart';
+
+const String _kAllClasses = 'Tất cả lớp';
 
 class SchedulesScreen extends StatefulWidget {
-  const SchedulesScreen({super.key});
+  final String? role;
+  final int? studentId;
+  const SchedulesScreen({super.key, this.role, this.studentId});
 
   @override
   State<SchedulesScreen> createState() => _SchedulesScreenState();
 }
 
+enum _FilterMode { all, study, exam }
+
 class _SchedulesScreenState extends State<SchedulesScreen> {
-  List<Map<String, dynamic>> _items = [];
+  List<Map<String, dynamic>> _studySchedules = [];
+  List<Map<String, dynamic>> _examSchedules = [];
+  List<Map<String, dynamic>> _weekSummary = [];
   List<String> _classOptions = [];
-  List<Map<String, dynamic>> _availableSubjects = [];
-  bool _loading = true;
-  String _role = '';
-  String? _selectedType;
-  String? _selectedClass;
-  String? _selectedSubject;
-  DateTime _focusedMonth = DateTime.now();
-  DateTime? _selectedDay;
-  String _calendarMode = 'month';
+  bool _isLoading = true;
 
-  final _titleController = TextEditingController();
-  final _subjectController = TextEditingController();
-  final _roomController = TextEditingController();
-  final _noteController = TextEditingController();
-  final _classController = TextEditingController();
-  final _timeController = TextEditingController();
-  String _editType = 'study';
-  int? _editingId;
-  DateTime? _pickedDate;
-  TimeOfDay? _pickedTime;
+  // Filter state
+  String? _classFilter;
+  _FilterMode _mode = _FilterMode.all;
 
-  bool get _canEdit => _role == 'admin' || _role == 'teacher';
+  bool get _isStudent => widget.role == 'student';
 
   @override
   void initState() {
     super.initState();
-    _loadRole();
+    _loadFilters();
+    _loadData();
   }
 
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _subjectController.dispose();
-    _roomController.dispose();
-    _noteController.dispose();
-    _classController.dispose();
-    _timeController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadRole() async {
-    final prefs = await SharedPreferences.getInstance();
-    _role = prefs.getString('role') ?? '';
-    if (!mounted) return;
-    await _loadClasses();
-    if (!mounted) return;
-    await _loadItems();
-  }
-
-  Future<void> _loadClasses() async {
-    try {
-      final data = await ApiService.getStudents();
-      List<String> classes = <String>[];
-      if (data is List) {
-        classes = data
-            .map((e) => (e['class_name'] ?? '').toString().trim())
-            .where((c) => c.isNotEmpty)
-            .toSet()
-            .toList();
-        classes.sort();
-      }
-      if (!mounted) return;
-      setState(() {
-        _classOptions = classes;
-        if (_selectedClass == null && _classOptions.isNotEmpty) {
-          _selectedClass = _classOptions.first;
-          _classController.text = _selectedClass!;
-        }
-      });
-      await _loadSubjectsForClass();
-    } catch (_) {}
-  }
-
-  Future<void> _loadSubjectsForClass() async {
-    try {
-      if (_selectedClass == null || _selectedClass!.isEmpty) {
-        if (!mounted) return;
-        setState(() => _availableSubjects = []);
-        return;
-      }
-      final courses = await ApiService.getCourses();
-      final subjects = courses is List
-          ? courses
-              .map((e) => Map<String, dynamic>.from(e))
-              .where((c) => (c['class_name'] ?? '').toString().trim() == _selectedClass)
-              .toList()
-          : <Map<String, dynamic>>[];
-      if (!mounted) return;
-      setState(() {
-        _availableSubjects = subjects;
-        if (_selectedSubject != null && !_availableSubjects.any((s) => (s['subject_name'] ?? '').toString() == _selectedSubject)) {
-          _selectedSubject = null;
-          _subjectController.clear();
-        }
-      });
-    } catch (_) {}
-  }
-
-  Future<void> _loadItems() async {
-    setState(() => _loading = true);
-    try {
-      final items = await ApiService.getSchedules(
-        type: _selectedType,
-        className: _selectedClass,
-      );
-      if (!mounted) return;
-      setState(() {
-        _items = (items is List) ? items.map((e) => Map<String, dynamic>.from(e)).toList() : [];
-        if (_selectedDay == null && _items.isNotEmpty) {
-          _selectedDay = _parseDate(_items.first['schedule_date']);
-        }
-      });
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không tải được lịch: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
+  Future<void> _loadFilters() async {
+    final list = await MockDataService.getScheduleClasses();
+    final options = <String>[];
+    if (!_isStudent) {
+      // Admin/Teacher: thêm "Tất cả lớp" để xem toàn bộ
+      options.add(_kAllClasses);
     }
-  }
+    options.addAll(list.where((c) => c.isNotEmpty));
 
-  void _resetForm() {
-    _editingId = null;
-    _editType = 'study';
-    _titleController.clear();
-    _subjectController.clear();
-    _roomController.clear();
-    _noteController.clear();
-    _classController.clear();
-    _selectedSubject = null;
-    _pickedDate = null;
-    _pickedTime = null;
-    _timeController.clear();
-  }
-
-  Future<void> _saveSchedule() async {
-    final date = _pickedDate;
-    final time = _pickedTime;
-    if (_titleController.text.trim().isEmpty || _classController.text.trim().isEmpty || date == null || time == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vui lòng nhập đủ tiêu đề, lớp, ngày và giờ')));
-      return;
-    }
-
-    final payload = {
-      'type': _editType,
-      'title': _titleController.text.trim(),
-      'class_name': _classController.text.trim(),
-      'subject_name': _subjectController.text.trim(),
-      'schedule_date': '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
-      'schedule_time': '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
-      'room': _roomController.text.trim(),
-      'note': _noteController.text.trim(),
-    };
-
-    try {
-      if (_editingId == null) {
-        await ApiService.addSchedule(payload);
+    String? defaultFilter;
+    if (_isStudent) {
+      // Student: mặc định là lớp của sinh viên
+      final prefs = await SharedPreferences.getInstance();
+      final cls = prefs.getString('class_name')?.trim();
+      if (cls != null && cls.isNotEmpty) {
+        defaultFilter = options.contains(cls) ? cls : (options.isNotEmpty ? options.first : null);
       } else {
-        await ApiService.updateSchedule(_editingId!, payload);
+        defaultFilter = options.isNotEmpty ? options.first : null;
       }
-      _resetForm();
-      await _loadItems();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã lưu lịch')));
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không lưu được lịch: $e')));
+    } else {
+      defaultFilter = _kAllClasses; // "Tất cả lớp"
     }
+
+    if (!mounted) return;
+    setState(() {
+      _classOptions = options;
+      _classFilter = defaultFilter;
+    });
   }
 
-  void _editItem(Map<String, dynamic> item) {
-    _editingId = item['id'] as int;
-    _editType = (item['type'] ?? 'study').toString();
-    _titleController.text = item['title']?.toString() ?? '';
-    _classController.text = item['class_name']?.toString() ?? '';
-    _subjectController.text = item['subject_name']?.toString() ?? '';
-    _selectedSubject = _subjectController.text.trim().isEmpty ? null : _subjectController.text.trim();
-    _pickedDate = _parseDate(item['schedule_date']);
-    final rawTime = item['schedule_time']?.toString() ?? '';
-    _timeController.text = rawTime;
-    if (rawTime.contains(':')) {
-      final parts = rawTime.split(':');
-      final hh = int.tryParse(parts[0]);
-      final mm = int.tryParse(parts.length > 1 ? parts[1] : '0');
-      if (hh != null && mm != null) _pickedTime = TimeOfDay(hour: hh, minute: mm);
-    }
-    _roomController.text = item['room']?.toString() ?? '';
-    _noteController.text = item['note']?.toString() ?? '';
-    setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã chọn lịch để sửa')));
-  }
-
-  Future<void> _deleteItem(int id) async {
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
     try {
-      await ApiService.deleteSchedule(id);
-      await _loadItems();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã xóa lịch')));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không xóa được lịch: $e')));
+      // Tải tuần tự để _weekSummary có thể tính từ chính lịch thực tế
+      final study = await MockDataService.getSchedules(type: 'study', studentId: widget.studentId);
+      final exam = await MockDataService.getSchedules(type: 'exam', studentId: widget.studentId);
+      final week = await MockDataService.getScheduleWeekSummary(fromSchedules: study);
+      if (!mounted) return;
+      setState(() {
+        _studySchedules = study;
+        _examSchedules = exam;
+        _weekSummary = week;
+        _isLoading = false;
+      });
+    } catch (_) {
+        if (!mounted) return;
+      setState(() => _isLoading = false);
     }
   }
 
-  DateTime? _parseDate(dynamic value) {
-    final raw = value?.toString() ?? '';
-    if (raw.length >= 10) {
-      final y = int.tryParse(raw.substring(0, 4));
-      final m = int.tryParse(raw.substring(5, 7));
-      final d = int.tryParse(raw.substring(8, 10));
-      if (y != null && m != null && d != null) return DateTime(y, m, d);
-    }
-    return null;
+  // ===== Filter helpers =====
+
+  bool _isAllClasses(String filter) => filter == _kAllClasses || filter.isEmpty;
+
+  List<Map<String, dynamic>> get _filteredAll {
+    final list = <Map<String, dynamic>>[
+      ..._studySchedules,
+      ..._examSchedules,
+    ];
+    return list.where((s) {
+      final filter = _classFilter ?? _kAllClasses;
+      if (!_isAllClasses(filter) && s['class_name'] != filter) return false;
+      if (_mode == _FilterMode.study && s['type'] != 'study') return false;
+      if (_mode == _FilterMode.exam && s['type'] != 'exam') return false;
+      return true;
+    }).toList()
+      ..sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
   }
 
-  String _dateKey(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  List<Map<String, dynamic>> get _filteredStudy {
+    final filter = _classFilter ?? _kAllClasses;
+    return _studySchedules.where((s) =>
+        _isAllClasses(filter) || s['class_name'] == filter).toList();
+  }
 
-  String _formatDate(DateTime d) => '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  List<Map<String, dynamic>> get _filteredExam {
+    final filter = _classFilter ?? _kAllClasses;
+    return _examSchedules.where((s) =>
+        _isAllClasses(filter) || s['class_name'] == filter).toList();
+  }
+
+  int get _countStudy => _filteredStudy.length;
+  int get _countExam => _filteredExam.length;
+  int get _countAll => _countStudy + _countExam;
+
+  // ===== Build =====
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FB),
-      appBar: AppBar(title: const Text('Lịch học / Lịch thi'), backgroundColor: Colors.purple.shade700, foregroundColor: Colors.white),
-      body: _loading
+      appBar: _buildAppBar(),
+      body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadItems,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
+          : Column(
                 children: [
-                  _buildHeader(),
-                  const SizedBox(height: 16),
-                  if (_canEdit) ...[
-                    _buildEditorCard(),
-                    const SizedBox(height: 16),
-                  ],
-                  _buildModeSelector(),
-                  const SizedBox(height: 16),
-                  if (_calendarMode == 'month') _buildMonthView(),
-                  if (_calendarMode == 'week') _buildWeekView(),
-                  if (_calendarMode == 'day') _buildDayView(),
-                ],
-              ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                  child: _buildWeekSummary(),
+                ),
+                _buildFilterBar(),
+                Expanded(child: _buildFilteredList()),
+              ],
+            ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showAddDialog,
+        backgroundColor: const Color(0xFF3B82F6),
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Thêm lịch', style: TextStyle(fontWeight: FontWeight.w800)),
             ),
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [Colors.purple.shade700, Colors.purple.shade500]),
-        borderRadius: BorderRadius.circular(22),
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      backgroundColor: const Color(0xFF3B82F6),
+      foregroundColor: Colors.white,
+      elevation: 0,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_rounded),
+        onPressed: () => Navigator.maybePop(context),
       ),
+      title: const Text('Lịch học / Lịch thi',
+          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+      actions: [
+        IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: _loadData),
+      ],
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(28),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              const Icon(Icons.calendar_today_rounded, size: 12, color: Colors.white70),
+              const SizedBox(width: 6),
+              Text(
+                'Tuần ${_getWeekNumber()} • $_countAll lịch (${_countStudy} học / $_countExam thi)',
+                style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWeekSummary() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.bar_chart_rounded, size: 18, color: Color(0xFF3B82F6)),
+              const SizedBox(width: 8),
+              const Text('Tổng quan tuần',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
+              const Spacer(),
+              Text(
+                '$_countAll buổi',
+                style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280), fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: _weekSummary.map((d) {
+              final color = _dayColor(d['color'] as String);
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: Column(
+            children: [
+                      Text(d['day'] as String,
+                          style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280), fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 4),
+                      Container(
+                        height: 36,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(d['count'] == 0 ? 0.05 : 0.18),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: color.withOpacity(0.4)),
+                        ),
+                        child: Text(
+                          '${d['count']}',
+                          style: TextStyle(
+                            color: d['count'] == 0 ? const Color(0xFF9CA3AF) : color,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+              ),
+            ],
+          ),
+    );
+  }
+
+  // ===== Filter bar (sticky) =====
+
+  Widget _buildFilterBar() {
+    return Container(
+      color: const Color(0xFFF5F7FB),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+            children: [
+          // Toggle: Tất cả / Lịch học / Lịch thi
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4)),
+              ],
+            ),
+            child: Row(
               children: [
-                const Text('Lịch học - lịch thi', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
-                const SizedBox(height: 6),
-                Text('Theo dõi lịch theo tháng, tuần hoặc ngày.', style: TextStyle(color: Colors.white.withOpacity(0.9))),
+                _modeChip(_FilterMode.all, 'Tất cả', _countAll),
+                _modeChip(_FilterMode.study, 'Lịch học', _countStudy, color: const Color(0xFF3B82F6)),
+                _modeChip(_FilterMode.exam, 'Lịch thi', _countExam, color: const Color(0xFFEF4444)),
               ],
             ),
           ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.calendar_month, color: Colors.white),
-            color: Colors.white,
-            onSelected: (value) => setState(() => _calendarMode = value),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'month', child: Text('Lịch Tháng')),
-              PopupMenuItem(value: 'week', child: Text('Lịch Tuần')),
-              PopupMenuItem(value: 'day', child: Text('Lịch Ngày')),
-            ],
-          ),
+          const SizedBox(height: 10),
+          // Dropdown lớp
+          _classDropdown(),
         ],
       ),
     );
   }
 
-  Widget _buildEditorCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.grey.shade200)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(_editingId == null ? 'Tạo lịch mới' : 'Sửa lịch', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-              const Spacer(),
-              if (_editingId != null) TextButton(onPressed: _resetForm, child: const Text('Hủy sửa')),
-            ],
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            value: _editType,
-            decoration: const InputDecoration(labelText: 'Loại lịch', border: OutlineInputBorder()),
-            items: const [
-              DropdownMenuItem(value: 'study', child: Text('Lịch học')),
-              DropdownMenuItem(value: 'exam', child: Text('Lịch thi')),
-            ],
-            onChanged: (v) => setState(() => _editType = v ?? 'study'),
-          ),
-          const SizedBox(height: 12),
-          TextField(controller: _titleController, decoration: const InputDecoration(labelText: 'Tiêu đề', border: OutlineInputBorder())),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            value: _classOptions.contains(_classController.text.trim()) ? _classController.text.trim() : null,
-            decoration: const InputDecoration(labelText: 'Lớp', border: OutlineInputBorder()),
-            items: _classOptions.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-            onChanged: (v) {
-              setState(() {
-                _classController.text = v ?? '';
-                _selectedClass = v;
-                _selectedSubject = null;
-                _subjectController.clear();
-              });
-              _loadSubjectsForClass();
-            },
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            value: _selectedSubject,
-            decoration: const InputDecoration(labelText: 'Môn học trong lớp', border: OutlineInputBorder()),
-            items: [
-              const DropdownMenuItem<String>(value: null, child: Text('Chọn môn học...')),
-              ..._availableSubjects
-                  .map((s) => (s['subject_name'] ?? '').toString().trim())
-                  .where((s) => s.isNotEmpty)
-                  .toSet()
-                  .map((subject) => DropdownMenuItem<String>(value: subject, child: Text(subject))),
-            ],
-            onChanged: (v) => setState(() {
-              _selectedSubject = v;
-              _subjectController.text = v ?? '';
-            }),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: _pickedDate ?? DateTime.now(),
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2100),
-                    );
-                    if (picked != null) setState(() => _pickedDate = picked);
-                  },
-                  child: InputDecorator(
-                    decoration: const InputDecoration(labelText: 'Ngày', border: OutlineInputBorder()),
-                    child: Text(_pickedDate == null ? 'Chọn ngày' : _formatDate(_pickedDate!)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: InkWell(
-                  onTap: () async {
-                    final picked = await showTimePicker(
-                      context: context,
-                      initialTime: _pickedTime ?? const TimeOfDay(hour: 7, minute: 0),
-                    );
-                    if (picked != null) {
-                      setState(() {
-                        _pickedTime = picked;
-                        _timeController.text = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
-                      });
-                    }
-                  },
-                  child: InputDecorator(
-                    decoration: const InputDecoration(labelText: 'Giờ', border: OutlineInputBorder()),
-                    child: Text(_pickedTime == null ? 'Chọn giờ' : _timeController.text),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(child: TextField(controller: _roomController, decoration: const InputDecoration(labelText: 'Phòng', border: OutlineInputBorder()))),
-              const SizedBox(width: 12),
-              Expanded(child: TextField(controller: _noteController, decoration: const InputDecoration(labelText: 'Ghi chú', border: OutlineInputBorder()))),
-            ],
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _saveSchedule,
-              icon: Icon(_editingId == null ? Icons.add : Icons.save),
-              label: Text(_editingId == null ? 'Tạo lịch' : 'Lưu thay đổi'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildModeSelector() {
-    return Row(
-      children: [
-        _modeChip('month', 'Tháng'),
-        const SizedBox(width: 8),
-        _modeChip('week', 'Tuần'),
-        const SizedBox(width: 8),
-        _modeChip('day', 'Ngày'),
-      ],
-    );
-  }
-
-  Widget _modeChip(String value, String label) {
-    final selected = _calendarMode == value;
+  Widget _modeChip(_FilterMode m, String label, int count, {Color? color}) {
+    final selected = _mode == m;
+    final accent = color ?? const Color(0xFF6B7280);
     return Expanded(
       child: InkWell(
-        onTap: () => setState(() => _calendarMode = value),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(9),
+        onTap: () => setState(() => _mode = m),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 9),
           decoration: BoxDecoration(
-            color: selected ? Colors.purple.shade700 : Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: selected ? Colors.purple.shade700 : Colors.grey.shade300),
+            color: selected ? accent : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
           ),
-          child: Text(label, textAlign: TextAlign.center, style: TextStyle(color: selected ? Colors.white : Colors.black87, fontWeight: FontWeight.w700)),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMonthView() {
-    final monthItems = _items.where((item) {
-      final d = _parseDate(item['schedule_date']);
-      return d != null && d.year == _focusedMonth.year && d.month == _focusedMonth.month;
-    }).toList();
-    final grouped = <String, List<Map<String, dynamic>>>{};
-    for (final item in monthItems) {
-      final d = _parseDate(item['schedule_date']);
-      if (d == null) continue;
-      grouped.putIfAbsent(_dateKey(d), () => []).add(item);
-    }
-    final days = grouped.keys.toList()..sort();
-
-    return _calendarCard(
-      header: Row(
-        children: [
-          IconButton(onPressed: () => setState(() => _focusedMonth = DateTime(_focusedMonth.year, _focusedMonth.month - 1)), icon: const Icon(Icons.chevron_left)),
-          Expanded(child: Center(child: Text('Tháng ${_focusedMonth.month}, ${_focusedMonth.year}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)))),
-          IconButton(onPressed: () => setState(() => _focusedMonth = DateTime(_focusedMonth.year, _focusedMonth.month + 1)), icon: const Icon(Icons.chevron_right)),
-        ],
-      ),
-      child: Column(
-        children: [
-          _monthGrid(),
-          const SizedBox(height: 16),
-          if (_selectedDay != null)
-            _buildItemsForDay(_selectedDay!)
-          else if (days.isNotEmpty)
-            _buildItemsForDay(_parseDate(days.first) ?? _focusedMonth)
-          else
-            _emptyHint('Không có lịch trong tháng này'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWeekView() {
-    final base = _selectedDay ?? DateTime(_focusedMonth.year, _focusedMonth.month, 1);
-    final monday = base.subtract(Duration(days: (base.weekday + 6) % 7));
-    final weekDays = List.generate(7, (i) => monday.add(Duration(days: i)));
-    return _calendarCard(
-      header: Row(
-        children: [
-          IconButton(onPressed: () => setState(() => _selectedDay = monday.subtract(const Duration(days: 7))), icon: const Icon(Icons.chevron_left)),
-          Expanded(child: Center(child: Text('Tuần ${_formatDate(monday)} - ${_formatDate(monday.add(const Duration(days: 6)))}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)))),
-          IconButton(onPressed: () => setState(() => _selectedDay = monday.add(const Duration(days: 7))), icon: const Icon(Icons.chevron_right)),
-        ],
-      ),
-      child: Column(
-        children: [
-          ...weekDays.map((day) => _daySummaryTile(day)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDayView() {
-    final day = _selectedDay ?? DateTime(_focusedMonth.year, _focusedMonth.month, 1);
-    return _calendarCard(
-      header: Row(
-        children: [
-          Expanded(child: Text(_formatDate(day), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
-          TextButton(onPressed: () async {
-            final picked = await showDatePicker(context: context, initialDate: day, firstDate: DateTime(2020), lastDate: DateTime(2100));
-            if (picked != null) setState(() => _selectedDay = picked);
-          }, child: const Text('Chọn ngày')),
-        ],
-      ),
-      child: _dayItems(day),
-    );
-  }
-
-  Widget _calendarCard({required Widget header, required Widget child}) {
-    return Container(
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.grey.shade200)),
-      padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [header, const SizedBox(height: 12), child]),
-    );
-  }
-
-  Widget _monthGrid() {
-    final first = DateTime(_focusedMonth.year, _focusedMonth.month, 1);
-    final firstWeekday = first.weekday % 7;
-    final daysInMonth = DateTime(_focusedMonth.year, _focusedMonth.month + 1, 0).day;
-    final cells = <Widget>[];
-    for (int i = 0; i < firstWeekday; i++) {
-      cells.add(const SizedBox());
-    }
-    for (int day = 1; day <= daysInMonth; day++) {
-      final date = DateTime(_focusedMonth.year, _focusedMonth.month, day);
-      final hasEvent = _items.any((item) {
-        final d = _parseDate(item['schedule_date']);
-        return d != null && d.year == date.year && d.month == date.month && d.day == date.day;
-      });
-      final selected = _selectedDay != null && _selectedDay!.year == date.year && _selectedDay!.month == date.month && _selectedDay!.day == date.day;
-      cells.add(GestureDetector(
-        onTap: () => setState(() => _selectedDay = date),
-        child: Container(
-          height: 38,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected ? Colors.blue.shade700 : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Stack(
-            alignment: Alignment.bottomCenter,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Center(
-                child: Text(
-                  '$day',
-                  style: TextStyle(color: selected ? Colors.white : Colors.black87, fontWeight: FontWeight.w700),
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? Colors.white : const Color(0xFF374151),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
                 ),
               ),
-              if (hasEvent)
-                Positioned(
-                  bottom: 4,
-                  child: Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.amber, shape: BoxShape.circle)),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? Colors.white.withOpacity(0.25)
+                      : const Color(0xFFE5E7EB),
+                  borderRadius: BorderRadius.circular(8),
                 ),
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    color: selected ? Colors.white : const Color(0xFF374151),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
-      ));
-    }
-    return GridView.count(
-      crossAxisCount: 7,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 6,
-      crossAxisSpacing: 6,
-      childAspectRatio: 1,
-      children: cells,
+      ),
     );
   }
 
-  List<Map<String, dynamic>> _itemsForDay(DateTime day) {
-    return _items.where((item) {
-      final d = _parseDate(item['schedule_date']);
-      return d != null && d.year == day.year && d.month == day.month && d.day == day.day;
-    }).toList();
-  }
+  Widget _classDropdown() {
+    // Phòng trường hợp value chưa có trong items, fallback về item đầu tiên để tránh crash DropdownButton
+    final items = _classOptions;
+    final value = (items.contains(_classFilter)) ? _classFilter : (items.isNotEmpty ? items.first : null);
 
-  Widget _buildItemsForDay(DateTime day) {
-    final items = _itemsForDay(day);
-    return _dayItems(day, items: items);
-  }
-
-  Widget _buildItemsForKey(String key) {
-    final items = _items.where((item) {
-      final d = _parseDate(item['schedule_date']);
-      return d != null && _dateKey(d) == key;
-    }).toList();
-    if (items.isEmpty) return _emptyHint('Không có lịch trong ngày này');
-    final day = _parseDate(items.first['schedule_date']) ?? DateTime.now();
-    return _dayItems(day, items: items);
-  }
-
-  Widget _dayItems(DateTime day, {List<Map<String, dynamic>>? items}) {
-    final list = items ?? _itemsForDay(day);
-    if (list.isEmpty) return _emptyHint('Không có lịch trong ngày này');
-    return Column(
-      children: list.map(_buildScheduleCard).toList(),
-    );
-  }
-
-  Widget _daySummaryTile(DateTime day) {
-    final list = _itemsForDay(day);
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.grey.shade200)),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4)),
+        ],
+      ),
       child: Row(
         children: [
-          Column(
+          const Icon(Icons.school_rounded, size: 18, color: Color(0xFF6B7280)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: value,
+                isExpanded: true,
+                icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF6B7280)),
+                items: items
+                    .map((c) => DropdownMenuItem<String>(
+                          value: c,
+                          child: Text(c.isEmpty ? _kAllClasses : c),
+                        ))
+                    .toList(),
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() => _classFilter = v);
+                },
+              ),
+            ),
+          ),
+          if (value != null && value.isNotEmpty && !_isAllClasses(value))
+            IconButton(
+              icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF9CA3AF)),
+              onPressed: () => setState(() => _classFilter = _isStudent ? value : _kAllClasses),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ===== List =====
+
+  Widget _buildFilteredList() {
+    final items = _filteredAll;
+    if (items.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(40),
+      child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+              Icon(Icons.event_busy_rounded, size: 56, color: Colors.grey.shade300),
+              const SizedBox(height: 12),
+              const Text('Không có lịch nào',
+                  style: TextStyle(color: Color(0xFF6B7280), fontSize: 13, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (_, i) => _buildScheduleCard(items[i]),
+    );
+  }
+
+  Widget _buildScheduleCard(Map<String, dynamic> s) {
+    final isExam = s['type'] == 'exam';
+    final color = isExam ? const Color(0xFFEF4444) : const Color(0xFF3B82F6);
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => _showScheduleDetail(s),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withOpacity(0.12)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+            Container(
+              width: 64,
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: [color, color.withOpacity(0.75)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    (s['date'] as String).split('-').last,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 22,
+                    ),
+                  ),
+                  Text(
+                    _monthFromDate(s['date'] as String),
+                    style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.22),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      s['day_of_week'] as String,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 10),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+      child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          s['subject_name'] as String,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                            color: Color(0xFF111827),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isExam ? const Color(0xFFFEE2E2) : const Color(0xFFDBEAFE),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          isExam ? 'THI' : 'HỌC',
+                          style: TextStyle(
+                            color: isExam ? const Color(0xFFB91C1C) : const Color(0xFF1D4ED8),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 9,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${s['subject_code']} • Lớp ${s['class_name']}',
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      _iconChip(Icons.access_time_rounded, s['time'] as String),
+                      const SizedBox(width: 6),
+                      _iconChip(Icons.room_rounded, s['room'] as String),
+                    ],
+                  ),
+                  if (isExam && s['exam_form'] != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        _iconChip(Icons.assignment_turned_in_rounded, s['exam_form'] as String),
+                        const SizedBox(width: 6),
+                        _iconChip(Icons.timer_rounded, '${s['duration']} phút'),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _iconChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: const Color(0xFF6B7280)),
+          const SizedBox(width: 4),
+          Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF374151), fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  void _showScheduleDetail(Map<String, dynamic> s) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _ScheduleDetailSheet(schedule: s),
+    );
+  }
+
+  // ===== Add dialog =====
+
+  Future<void> _showAddDialog() async {
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _AddScheduleSheet(),
+    );
+    if (result == null || !mounted) return;
+
+    try {
+      final created = await MockDataService.createSchedule(result);
+      setState(() {
+        if (created['type'] == 'exam') {
+          _examSchedules.add(created);
+        } else {
+          _studySchedules.add(created);
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã thêm ${created['type'] == 'exam' ? 'lịch thi' : 'lịch học'}: ${created['subject_name']}'),
+          backgroundColor: const Color(0xFF10B981),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi: $e'), backgroundColor: const Color(0xFFEF4444)),
+      );
+    }
+  }
+
+  // ===== Helpers =====
+
+  int _getWeekNumber() {
+    final now = DateTime.now();
+    final start = DateTime(now.year, 1, 1);
+    return ((now.difference(start).inDays) / 7).ceil();
+  }
+
+  String _monthFromDate(String date) {
+    final parts = date.split('-');
+    if (parts.length < 3) return '';
+    final m = int.tryParse(parts[1]) ?? 0;
+    const months = ['', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'];
+    return months[m];
+  }
+
+  Color _dayColor(String colorName) {
+    switch (colorName) {
+      case 'indigo': return const Color(0xFF6366F1);
+      case 'blue': return const Color(0xFF3B82F6);
+      case 'green': return const Color(0xFF10B981);
+      case 'orange': return const Color(0xFFF59E0B);
+      case 'purple': return const Color(0xFFA855F7);
+      case 'red': return const Color(0xFFEF4444);
+      case 'grey': return const Color(0xFF6B7280);
+      default: return const Color(0xFF6B7280);
+    }
+  }
+}
+
+// ============ Add schedule bottom sheet ============
+
+class _AddScheduleSheet extends StatefulWidget {
+  const _AddScheduleSheet();
+
+  @override
+  State<_AddScheduleSheet> createState() => _AddScheduleSheetState();
+}
+
+class _AddScheduleSheetState extends State<_AddScheduleSheet> {
+  String _type = 'study';
+  String? _subject;
+  String? _class;
+  String? _room;
+  String? _examForm;
+  String _duration = '90';
+  String _note = '';
+  DateTime _date = DateTime.now();
+  TimeOfDay _start = const TimeOfDay(hour: 8, minute: 0);
+  TimeOfDay _end = const TimeOfDay(hour: 10, minute: 0);
+
+  List<String> _subjects = [];
+  List<String> _classes = [];
+  List<String> _rooms = [];
+  List<String> _examForms = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOptions();
+  }
+
+  Future<void> _loadOptions() async {
+    final results = await Future.wait([
+      MockDataService.getScheduleSubjects(),
+      MockDataService.getScheduleClasses(),
+      MockDataService.getScheduleRooms(),
+      MockDataService.getScheduleExamForms(),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _subjects = results[0];
+      _classes = (results[1] as List<String>).where((c) => c != 'Tất cả lớp').toList();
+      _rooms = results[2];
+      _examForms = results[3];
+      _subject ??= _subjects.isNotEmpty ? _subjects.first : null;
+      _class ??= _classes.isNotEmpty ? _classes.first : null;
+      _room ??= _rooms.isNotEmpty ? _rooms.first : null;
+      _examForm ??= _examForms.isNotEmpty ? _examForms.first : null;
+    });
+  }
+
+  Future<void> _pickDate() async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime.now().subtract(const Duration(days: 30)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (d != null) setState(() => _date = d);
+  }
+
+  Future<void> _pickTime(bool isStart) async {
+    final t = await showTimePicker(context: context, initialTime: isStart ? _start : _end);
+    if (t == null) return;
+    setState(() {
+      if (isStart) {
+        _start = t;
+        // Auto push end = start + 2h if end <= start
+        final endMin = _end.hour * 60 + _end.minute;
+        final startMin = t.hour * 60 + t.minute;
+        if (endMin <= startMin) {
+          _end = TimeOfDay(hour: (t.hour + 2) % 24, minute: t.minute);
+        }
+      } else {
+        _end = t;
+      }
+    });
+  }
+
+  void _save() {
+    if (_subject == null || _class == null || _room == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng chọn đầy đủ thông tin'), backgroundColor: Color(0xFFEF4444)),
+      );
+      return;
+    }
+    final subjectCode = _subject!.split(' - ').first;
+    final subjectName = _subject!.contains(' - ') ? _subject!.split(' - ').skip(1).join(' - ') : _subject!;
+    final dateStr = '${_date.year.toString().padLeft(4, '0')}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}';
+    final timeStr =
+        '${_start.hour.toString().padLeft(2, '0')}:${_start.minute.toString().padLeft(2, '0')} - ${_end.hour.toString().padLeft(2, '0')}:${_end.minute.toString().padLeft(2, '0')}';
+    Navigator.pop(context, {
+      'type': _type,
+      'subject_code': subjectCode,
+      'subject_name': subjectName,
+      'class_name': _class,
+      'date': dateStr,
+      'time': timeStr,
+      'room': _room,
+      'exam_form': _type == 'exam' ? _examForm : null,
+      'duration': _type == 'exam' ? int.tryParse(_duration) : null,
+      'note': _note,
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isExam = _type == 'exam';
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(_formatDate(day), style: const TextStyle(fontWeight: FontWeight.w800)),
-              const SizedBox(height: 4),
-              Text('${list.length} lịch'),
-            ],
+                Center(
+                  child: Container(
+                    width: 40, height: 4,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE5E7EB),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const Text('Thêm lịch học / lịch thi',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF111827))),
+                const SizedBox(height: 16),
+
+                // Type toggle
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      _typeTab('study', 'Lịch học', Icons.school_rounded, const Color(0xFF3B82F6)),
+                      _typeTab('exam', 'Lịch thi', Icons.assignment_rounded, const Color(0xFFEF4444)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                _field(
+                  label: 'Môn học',
+                  icon: Icons.menu_book_rounded,
+                  child: _dropdown(
+                    value: _subject,
+                    items: _subjects,
+                    hint: 'Chọn môn học',
+                    onChanged: (v) => setState(() => _subject = v),
+                  ),
+                ),
+                _field(
+                  label: 'Lớp',
+                  icon: Icons.class_rounded,
+                  child: _dropdown(
+                    value: _class,
+                    items: _classes,
+                    hint: 'Chọn lớp',
+                    onChanged: (v) => setState(() => _class = v),
+                  ),
+                ),
+                _field(
+                  label: 'Ngày',
+                  icon: Icons.event_rounded,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: _pickDate,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: const Color(0xFFE5E7EB)),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          Text(
+                            '${_date.day.toString().padLeft(2, '0')}/${_date.month.toString().padLeft(2, '0')}/${_date.year}',
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
           ),
           const Spacer(),
-          TextButton(onPressed: () => setState(() => _selectedDay = day), child: const Text('Xem')),
-        ],
+                          const Icon(Icons.calendar_today_rounded, size: 16, color: Color(0xFF6B7280)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    Expanded(child: _field(
+                      label: 'Bắt đầu',
+                      icon: Icons.access_time_rounded,
+                      child: _timeBox(_start, () => _pickTime(true)),
+                    )),
+                    const SizedBox(width: 10),
+                    Expanded(child: _field(
+                      label: 'Kết thúc',
+                      icon: Icons.access_time_filled_rounded,
+                      child: _timeBox(_end, () => _pickTime(false)),
+                    )),
+                  ],
+                ),
+                _field(
+                  label: 'Phòng',
+                  icon: Icons.room_rounded,
+                  child: _dropdown(
+                    value: _room,
+                    items: _rooms,
+                    hint: 'Chọn phòng',
+                    onChanged: (v) => setState(() => _room = v),
+                  ),
+                ),
+                if (isExam) ...[
+                  _field(
+                    label: 'Hình thức thi',
+                    icon: Icons.assignment_turned_in_rounded,
+                    child: _dropdown(
+                      value: _examForm,
+                      items: _examForms,
+                      hint: 'Chọn hình thức',
+                      onChanged: (v) => setState(() => _examForm = v),
+                    ),
+                  ),
+                  _field(
+                    label: 'Thời lượng (phút)',
+                    icon: Icons.timer_rounded,
+                    child: _dropdown(
+                      value: _duration,
+                      items: const ['45', '60', '90', '120', '150'],
+                      hint: 'Chọn thời lượng',
+                      onChanged: (v) => setState(() => _duration = v ?? '90'),
+                    ),
+                  ),
+                ],
+                _field(
+                  label: 'Ghi chú (tuỳ chọn)',
+                  icon: Icons.note_rounded,
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Ghi chú thêm...',
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    maxLines: 2,
+                    onChanged: (v) => _note = v,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          side: const BorderSide(color: Color(0xFFE5E7EB)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Huỷ', style: TextStyle(color: Color(0xFF374151), fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isExam ? const Color(0xFFEF4444) : const Color(0xFF3B82F6),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: _save,
+                        child: const Text('Lưu lịch', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildFilterCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.grey.shade200)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Lọc danh sách', style: TextStyle(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 12),
-          Row(
+  Widget _typeTab(String value, String label, IconData icon, Color color) {
+    final selected = _type == value;
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(9),
+        onTap: () => setState(() => _type = value),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? color : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  value: _selectedType,
-                  decoration: const InputDecoration(labelText: 'Loại', border: OutlineInputBorder()),
-                  items: const [
-                    DropdownMenuItem(value: null, child: Text('Tất cả')),
-                    DropdownMenuItem(value: 'study', child: Text('Lịch học')),
-                    DropdownMenuItem(value: 'exam', child: Text('Lịch thi')),
-                  ],
-                  onChanged: (v) {
-                    setState(() => _selectedType = v);
-                    _loadItems();
-                  },
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  value: _selectedClass,
-                  decoration: const InputDecoration(labelText: 'Lớp', border: OutlineInputBorder()),
-                  items: [
-                    const DropdownMenuItem<String>(value: null, child: Text('Tất cả')),
-                    ..._classOptions.map((c) => DropdownMenuItem(value: c, child: Text(c))),
-                  ],
-                  onChanged: (v) {
-                    setState(() => _selectedClass = v);
-                    _loadItems();
-                  },
-                ),
-              ),
+              Icon(icon, size: 16, color: selected ? Colors.white : const Color(0xFF6B7280)),
+              const SizedBox(width: 6),
+              Text(label, style: TextStyle(
+                color: selected ? Colors.white : const Color(0xFF374151),
+                fontWeight: FontWeight.w800,
+                fontSize: 13,
+              )),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _field({required String label, required IconData icon, required Widget child}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: const Color(0xFF6B7280)),
+              const SizedBox(width: 6),
+              Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF374151))),
+            ],
+          ),
+          const SizedBox(height: 6),
+          child,
         ],
       ),
     );
   }
 
-  Widget _buildScheduleCard(Map<String, dynamic> item) {
-    final isExam = (item['type'] ?? 'study') == 'exam';
-    final color = isExam ? Colors.red : Colors.blue;
+  Widget _dropdown({
+    required String? value,
+    required List<String> items,
+    required String hint,
+    required ValueChanged<String?> onChanged,
+  }) {
+    // Đảm bảo value luôn nằm trong items (tránh DropdownButton crash)
+    final safeItems = items.isEmpty ? const [''] : items;
+    final actualValue = (value != null && safeItems.contains(value))
+        ? value
+        : (safeItems.isNotEmpty && safeItems.first.isNotEmpty ? safeItems.first : null);
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: color.withOpacity(0.12))),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: actualValue,
+          isExpanded: true,
+          hint: Text(hint, style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 13)),
+          icon: const Icon(Icons.keyboard_arrow_down_rounded),
+          items: safeItems.map((it) => DropdownMenuItem<String>(value: it, child: Text(it, overflow: TextOverflow.ellipsis))).toList(),
+          onChanged: onChanged,
+        ),
+      ),
+    );
+  }
+
+  Widget _timeBox(TimeOfDay t, VoidCallback onTap) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        decoration: BoxDecoration(
+          border: Border.all(color: const Color(0xFFE5E7EB)),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            Text(
+              '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            ),
+            const Spacer(),
+            const Icon(Icons.access_time_rounded, size: 16, color: Color(0xFF6B7280)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============ Schedule Detail Sheet ============
+
+class _ScheduleDetailSheet extends StatelessWidget {
+  final Map<String, dynamic> schedule;
+  const _ScheduleDetailSheet({required this.schedule});
+
+  @override
+  Widget build(BuildContext context) {
+    final isExam = (schedule['type'] ?? '') == 'exam';
+    final color = isExam ? const Color(0xFFEF4444) : const Color(0xFF3B82F6);
+    final subjectCode = schedule['subject_code']?.toString() ?? '';
+    final subjectName = schedule['subject_name']?.toString() ?? '';
+    final className = schedule['class_name']?.toString() ?? '';
+    final date = schedule['date']?.toString() ?? '';
+    final dayOfWeek = schedule['day_of_week']?.toString() ?? '';
+    final time = schedule['time']?.toString() ?? '';
+    final room = schedule['room']?.toString() ?? '';
+    final examForm = schedule['exam_form']?.toString();
+    final duration = schedule['duration'];
+    final note = schedule['note']?.toString() ?? '';
+    final id = schedule['id']?.toString() ?? '';
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.65,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      builder: (_, controller) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [color, color.withValues(alpha: 0.7)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40, height: 4,
+                    margin: const EdgeInsets.only(bottom: 14),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
-                child: Icon(isExam ? Icons.quiz : Icons.event, color: color),
+                        width: 56, height: 56,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          isExam ? Icons.assignment_rounded : Icons.class_rounded,
+                          color: Colors.white,
+                          size: 28,
+                        ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(item['title']?.toString() ?? '', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    subjectName,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.25),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    isExam ? 'THI' : 'HỌC',
+                                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900),
+                                  ),
+                                ),
+                              ],
+                            ),
                     const SizedBox(height: 4),
-                    Text('${isExam ? 'Lịch thi' : 'Lịch học'} • ${item['class_name'] ?? ''}', style: TextStyle(color: Colors.grey.shade700)),
+                            Text(
+                              '$subjectCode • Lớp $className',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.9),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                   ],
                 ),
               ),
-              if (_canEdit)
-                PopupMenuButton<String>(
-                  onSelected: (v) {
-                    if (v == 'edit') _editItem(item);
-                    if (v == 'delete') _deleteItem(item['id']);
-                  },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'edit', child: Text('Sửa')),
-                    PopupMenuItem(value: 'delete', child: Text('Xóa')),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, color: Colors.white),
+                        onPressed: () => Navigator.pop(context),
+                      ),
                   ],
                 ),
             ],
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                controller: controller,
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: _infoBox(Icons.calendar_today_rounded, 'Ngày', _fmtDate(date), color)),
+                      const SizedBox(width: 8),
+                      Expanded(child: _infoBox(Icons.access_time_rounded, 'Giờ', time, color)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(child: _infoBox(Icons.room_rounded, 'Phòng', room, color)),
+                      const SizedBox(width: 8),
+                      Expanded(child: _infoBox(Icons.event_note_rounded, 'Thứ', dayOfWeek, color)),
+                    ],
+                  ),
+                  if (isExam && examForm != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(child: _infoBox(Icons.assignment_turned_in_rounded, 'Hình thức', examForm, color)),
+                        const SizedBox(width: 8),
+                        Expanded(child: _infoBox(Icons.timer_rounded, 'Thời lượng', '$duration phút', color)),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  if (note.isNotEmpty) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF9FAFB),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFE5E7EB)),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.note_rounded, size: 16, color: Color(0xFF6B7280)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              note,
+                              style: const TextStyle(fontSize: 12, color: Color(0xFF374151), height: 1.4),
+                            ),
+                          ),
+                        ],
+                      ),
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+                  ],
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF9FAFB),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
             children: [
-              _infoChip(Icons.menu_book, item['subject_name']?.toString() ?? '—'),
-              _infoChip(Icons.calendar_month, '${item['schedule_date'] ?? ''} • ${item['schedule_time'] ?? ''}'),
-              _infoChip(Icons.meeting_room, item['room']?.toString() ?? '—'),
+                        const Icon(Icons.fingerprint_rounded, size: 14, color: Color(0xFF6B7280)),
+                        const SizedBox(width: 6),
+                        Text('Mã lịch: #$id',
+                            style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280), fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Đã xuất lịch'), backgroundColor: Color(0xFF10B981)),
+                          );
+                        },
+                        icon: const Icon(Icons.share_rounded, size: 16),
+                        label: const Text('Chia sẻ'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          side: const BorderSide(color: Color(0xFFE5E7EB)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          foregroundColor: const Color(0xFF374151),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Đã mở form chỉnh sửa: $subjectName'),
+                              backgroundColor: color,
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.edit_rounded, size: 16),
+                        label: const Text('Chỉnh sửa'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: color,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _infoBox(IconData icon, String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 4),
+              Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w700)),
             ],
           ),
-          if ((item['note'] ?? '').toString().isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(item['note'].toString(), style: TextStyle(color: Colors.grey.shade700)),
-          ],
+          const SizedBox(height: 6),
+          Text(value.isEmpty ? '—' : value,
+              style: const TextStyle(fontSize: 14, color: Color(0xFF111827), fontWeight: FontWeight.w900)),
         ],
       ),
     );
   }
 
-  Widget _infoChip(IconData icon, String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(color: const Color(0xFFF5F7FB), borderRadius: BorderRadius.circular(999)),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 16), const SizedBox(width: 6), Text(text)]),
-    );
+  String _fmtDate(String date) {
+    if (date.isEmpty) return '—';
+    if (date.length >= 10) {
+      final d = date.substring(8, 10);
+      final m = date.substring(5, 7);
+      final y = date.substring(0, 4);
+      return '$d/$m/$y';
+    }
+    return date;
   }
-
-  Widget _emptyHint(String text) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        child: Center(child: Text(text, style: TextStyle(color: Colors.grey.shade600))),
-      );
 }

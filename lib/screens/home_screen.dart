@@ -4,9 +4,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'account_screen.dart';
 import 'attendance_screen.dart';
+import 'class_management_screen.dart';
 import 'schedules_screen.dart';
-import 'grades_screen.dart';
 import 'students_grades_screen.dart';
+import 'my_grades_screen.dart';
 import 'students_screen.dart';
 import 'tuition_screen.dart';
 import 'curriculum_screen.dart';
@@ -327,6 +328,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return [
         _MenuTileData(Icons.dashboard, 'Tổng quan', Colors.purple, () => setState(() => _desktopSelectedIndex = 0)),
         _MenuTileData(Icons.people, 'Quản lý sinh viên', Colors.blue, () => setState(() => _desktopSelectedIndex = 1)),
+        _MenuTileData(Icons.class_, 'Quản lý lớp học', Colors.indigo, () => setState(() => _desktopSelectedIndex = 8)),
         _MenuTileData(Icons.school, 'Chương trình khung', Colors.green, () => setState(() => _desktopSelectedIndex = 2)),
         _MenuTileData(Icons.grade, 'Quản lý điểm', Colors.orange, () => setState(() => _desktopSelectedIndex = 3)),
         _MenuTileData(Icons.event_available, 'Điểm danh', Colors.teal, () => setState(() => _desktopSelectedIndex = 4)),
@@ -409,8 +411,8 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.grey.shade200),
       ),
-      child: SizedBox(
-        height: 720,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 500),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(20),
           child: _buildFeatureWidget(selected),
@@ -584,17 +586,20 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSchedulesPanel() {
-    return const SchedulesScreen();
+    return SchedulesScreen(role: _role, studentId: _studentId);
+  }
+
+  Widget _buildClassManagementPanel() {
+    return const ClassManagementScreen(embedded: true);
   }
 
   Widget _buildStudentGradesPanel() {
     if (_studentId == null) {
       return _buildInfoPlaceholder('Không tìm thấy sinh viên trong phiên đăng nhập.');
     }
-    return GradesScreen(
+    return MyGradesScreen(
       studentId: _studentId!,
       studentName: _username,
-      role: _role,
     );
   }
 
@@ -618,6 +623,8 @@ class _HomeScreenState extends State<HomeScreen> {
             return _buildSchedulesPanel();
           case 7:
             return _buildPasswordCard();
+          case 8:
+            return _buildClassManagementPanel();
         }
         break;
       case 'teacher':
