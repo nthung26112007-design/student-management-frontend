@@ -8,6 +8,7 @@ import 'schedules_screen.dart';
 import 'grades_screen.dart';
 import 'students_grades_screen.dart';
 import 'students_screen.dart';
+import 'teacher_management_screen.dart';
 import 'tuition_screen.dart';
 import 'curriculum_screen.dart';
 
@@ -710,7 +711,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       case 'dashboard':
         return _buildDashboardPage();
       case 'students':
-        return _StudentsPanel(role: _role);
+        return const StudentsScreen(embedded: true);
+      case 'teachers':
+        return const TeacherManagementScreen(embedded: true);
       case 'curriculum':
         return CurriculumScreen(role: _role, embedded: true);
       case 'grades':
@@ -882,6 +885,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ]),
       _NavGroup('QUẢN LÝ', [
         _NavItem('students', Icons.people_alt_rounded, 'Quản lý sinh viên', 'manage'),
+        _NavItem('teachers', Icons.badge, 'Quản lý giáo viên', 'manage'),
         _NavItem('curriculum', Icons.school_rounded, 'Chương trình khung', 'manage'),
         _NavItem('grades', Icons.grading_rounded, 'Quản lý điểm', 'manage'),
         _NavItem('attendance', Icons.event_available_rounded, 'Điểm danh', 'manage'),

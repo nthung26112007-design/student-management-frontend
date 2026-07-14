@@ -8,6 +8,7 @@ import 'class_management_screen.dart';
 import 'schedules_screen.dart';
 import 'students_grades_screen.dart';
 import 'my_grades_screen.dart';
+import 'grades_display_screen.dart';
 import 'students_screen.dart';
 import 'tuition_screen.dart';
 import 'curriculum_screen.dart';
@@ -101,7 +102,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _gradesPanelLoading = true);
     try {
       if (_studentId != null) {
-        final data = await ApiService.getGrades(_studentId!);
+        final data = await ApiService.getGrades(studentId: _studentId!);
         final list = data is List ? data.map((e) => Map<String, dynamic>.from(e)).toList() : <Map<String, dynamic>>[];
         if (!mounted) return;
         setState(() => _gradesPanel = list);
@@ -597,7 +598,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_studentId == null) {
       return _buildInfoPlaceholder('Không tìm thấy sinh viên trong phiên đăng nhập.');
     }
-    return MyGradesScreen(
+    return GradesDisplayScreen(
       studentId: _studentId!,
       studentName: _username,
     );

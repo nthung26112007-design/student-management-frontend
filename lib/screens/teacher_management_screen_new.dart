@@ -2,16 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 
-class StudentsScreen extends StatefulWidget {
+class TeacherManagementScreen extends StatefulWidget {
   final bool embedded;
-  const StudentsScreen({super.key, this.embedded = false});
+  const TeacherManagementScreen({super.key, this.embedded = false});
 
   @override
-  State<StudentsScreen> createState() => _StudentsScreenState();
+  State<TeacherManagementScreen> createState() => _TeacherManagementScreenState();
 }
 
-class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProviderStateMixin {
-  List<dynamic> _students = [];
+class _TeacherManagementScreenState extends State<TeacherManagementScreen> with SingleTickerProviderStateMixin {
+  List<dynamic> _teachers = [];
   List<dynamic> _filtered = [];
   bool _isLoading = true;
   String _role = '';
@@ -31,7 +31,7 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_onTabChanged);
     _loadRole();
-    _loadStudents();
+    _loadTeachers();
     _searchController.addListener(_onSearchChanged);
   }
 
@@ -59,18 +59,18 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
     setState(() => _role = prefs.getString('role') ?? '');
   }
 
-  Future<void> _loadStudents() async {
+  Future<void> _loadTeachers() async {
     setState(() => _isLoading = true);
     try {
-      final data = await ApiService.getStudents();
+      final data = await ApiService.getTeachers();
       if (!mounted) return;
       setState(() {
         if (data is List) {
-          _students = data.isNotEmpty ? data : _mockStudents();
+          _teachers = data.isNotEmpty ? data : _mockTeachers();
         } else if (data is Map) {
-          _students = [data];
+          _teachers = [data];
         } else {
-          _students = _mockStudents();
+          _teachers = _mockTeachers();
         }
         _applyFilters();
         _isLoading = false;
@@ -78,77 +78,77 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _students = _mockStudents();
+        _teachers = _mockTeachers();
         _applyFilters();
         _isLoading = false;
       });
     }
   }
 
-  List<Map<String, dynamic>> _mockStudents() {
+  List<Map<String, dynamic>> _mockTeachers() {
     final names = [
-      ['SV001', 'Nguyễn Văn An', 'Nam', '2003-05-12', 'an.nv@student.edu.vn', '0901234567', 'CNTT01', 'Đang học'],
-      ['SV002', 'Trần Thị Bình', 'Nữ', '2003-08-21', 'binh.tt@student.edu.vn', '0901234568', 'CNTT01', 'Đang học'],
-      ['SV003', 'Lê Hoàng Cường', 'Nam', '2002-11-03', 'cuong.lh@student.edu.vn', '0901234569', 'CNTT01', 'Đang học'],
-      ['SV004', 'Phạm Thị Dung', 'Nữ', '2003-02-14', 'dung.pt@student.edu.vn', '0901234570', 'CNTT01', 'Đang học'],
-      ['SV005', 'Hoàng Minh Đức', 'Nam', '2002-07-09', 'duc.hm@student.edu.vn', '0901234571', 'CNTT01', 'Đang học'],
-      ['SV006', 'Võ Thị Hoa', 'Nữ', '2003-09-25', 'hoa.vt@student.edu.vn', '0901234572', 'CNTT01', 'Đang học'],
-      ['SV007', 'Đặng Quốc Huy', 'Nam', '2002-04-18', 'huy.dq@student.edu.vn', '0901234573', 'CNTT01', 'Đang học'],
-      ['SV008', 'Bùi Thị Lan', 'Nữ', '2003-12-07', 'lan.bt@student.edu.vn', '0901234574', 'CNTT01', 'Bảo lưu'],
-      ['SV009', 'Ngô Văn Khánh', 'Nam', '2002-03-22', 'khanh.nv@student.edu.vn', '0901234575', 'CNTT01', 'Đang học'],
-      ['SV010', 'Đinh Thị Linh', 'Nữ', '2003-06-30', 'linh.dt@student.edu.vn', '0901234576', 'CNTT01', 'Đang học'],
-      ['SV011', 'Trương Văn Minh', 'Nam', '2002-10-11', 'minh.tv@student.edu.vn', '0901234577', 'CNTT02', 'Đang học'],
-      ['SV012', 'Phan Thị Ngọc', 'Nữ', '2003-01-19', 'ngoc.pt@student.edu.vn', '0901234578', 'CNTT02', 'Đang học'],
-      ['SV013', 'Lý Hoàng Phúc', 'Nam', '2002-08-08', 'phuc.lh@student.edu.vn', '0901234579', 'CNTT02', 'Đang học'],
-      ['SV014', 'Vũ Thị Quỳnh', 'Nữ', '2003-04-15', 'quynh.vt@student.edu.vn', '0901234580', 'CNTT02', 'Đang học'],
-      ['SV015', 'Tô Văn Sơn', 'Nam', '2002-12-28', 'son.tv@student.edu.vn', '0901234581', 'CNTT02', 'Đang học'],
-      ['SV016', 'Hồ Thị Trang', 'Nữ', '2003-07-04', 'trang.ht@student.edu.vn', '0901234582', 'CNTT02', 'Đang học'],
-      ['SV017', 'Châu Văn Tùng', 'Nam', '2002-05-17', 'tung.cv@student.edu.vn', '0901234583', 'CNTT02', 'Đang học'],
-      ['SV018', 'Dương Thị Uyên', 'Nữ', '2003-11-23', 'uyen.dt@student.edu.vn', '0901234584', 'CNTT02', 'Đang học'],
-      ['SV019', 'Lâm Văn Vinh', 'Nam', '2002-09-06', 'vinh.lv@student.edu.vn', '0901234585', 'CNTT02', 'Tốt nghiệp'],
-      ['SV020', 'Cao Thị Xuân', 'Nữ', '2003-03-14', 'xuan.ct@student.edu.vn', '0901234586', 'CNTT02', 'Đang học'],
-      ['SV021', 'Đỗ Hoàng Yên', 'Nam', '2002-06-29', 'yen.dh@student.edu.vn', '0901234587', 'ATTT01', 'Đang học'],
-      ['SV022', 'Mai Thị Hằng', 'Nữ', '2003-10-02', 'hang.mt@student.edu.vn', '0901234588', 'ATTT01', 'Đang học'],
-      ['SV023', 'Hà Văn Khôi', 'Nam', '2002-02-26', 'khoi.hv@student.edu.vn', '0901234589', 'ATTT01', 'Đang học'],
-      ['SV024', 'Kiều Thị Mai', 'Nữ', '2003-05-19', 'mai.kt@student.edu.vn', '0901234590', 'ATTT01', 'Đang học'],
-      ['SV025', 'Thái Văn Nam', 'Nam', '2002-11-11', 'nam.tv@student.edu.vn', '0901234591', 'ATTT01', 'Đang học'],
-      ['SV026', 'Lưu Thị Oanh', 'Nữ', '2003-08-05', 'oanh.lt@student.edu.vn', '0901234592', 'ATTT01', 'Bảo lưu'],
-      ['SV027', 'Tăng Văn Phát', 'Nam', '2002-01-30', 'phat.tv@student.edu.vn', '0901234593', 'ATTT01', 'Đang học'],
-      ['SV028', 'Quách Thị Quy', 'Nữ', '2003-12-16', 'quy.qt@student.edu.vn', '0901234594', 'ATTT01', 'Đang học'],
-      ['SV029', 'Tiêu Văn Rôn', 'Nam', '2002-07-23', 'ron.tv@student.edu.vn', '0901234595', 'KTPM01', 'Đang học'],
-      ['SV030', 'Âu Thị Sen', 'Nữ', '2003-04-08', 'sen.at@student.edu.vn', '0901234596', 'KTPM01', 'Đang học'],
-      ['SV031', 'Chung Văn Tài', 'Nam', '2002-10-25', 'tai.cv@student.edu.vn', '0901234597', 'KTPM01', 'Đang học'],
-      ['SV032', 'Mạc Thị Vân', 'Nữ', '2003-06-12', 'van.mt@student.edu.vn', '0901234598', 'KTPM01', 'Đang học'],
-      ['SV033', 'Nhâm Văn Ưng', 'Nam', '2002-03-09', 'ung.nv@student.edu.vn', '0901234599', 'KTPM01', 'Tốt nghiệp'],
-      ['SV034', 'Quan Thị Yến', 'Nữ', '2003-09-28', 'yen.qt@student.edu.vn', '0901234600', 'KTPM01', 'Đang học'],
-      ['SV035', 'Từ Văn Bảo', 'Nam', '2002-12-04', 'bao.tv@student.edu.vn', '0901234601', 'KTPM01', 'Đang học'],
-      ['SV036', 'Ứng Thị Cẩm', 'Nữ', '2003-02-21', 'cam.ut@student.edu.vn', '0901234602', 'CNTT01', 'Đang học'],
-      ['SV037', 'Vương Văn Đạt', 'Nam', '2002-05-15', 'dat.vv@student.edu.vn', '0901234603', 'CNTT02', 'Đang học'],
-      ['SV038', 'Hứa Thị Giang', 'Nữ', '2003-11-09', 'giang.ht@student.edu.vn', '0901234604', 'CNTT02', 'Đang học'],
-      ['SV039', 'Kha Văn Hào', 'Nam', '2002-04-02', 'hao.kv@student.edu.vn', '0901234605', 'ATTT01', 'Đang học'],
-      ['SV040', 'La Thị Kim', 'Nữ', '2003-08-17', 'kim.lt@student.edu.vn', '0901234606', 'KTPM01', 'Đang học'],
+      ['SV001', 'Nguyễn Văn An', 'Nam', '2003-05-12', 'an.nv@teacher.edu.vn', '0901234567', 'CNTT01', 'Đang dạy'],
+      ['SV002', 'Trần Thị Bình', 'Nữ', '2003-08-21', 'binh.tt@teacher.edu.vn', '0901234568', 'CNTT01', 'Đang dạy'],
+      ['SV003', 'Lê Hoàng Cường', 'Nam', '2002-11-03', 'cuong.lh@teacher.edu.vn', '0901234569', 'CNTT01', 'Đang dạy'],
+      ['SV004', 'Phạm Thị Dung', 'Nữ', '2003-02-14', 'dung.pt@teacher.edu.vn', '0901234570', 'CNTT01', 'Đang dạy'],
+      ['SV005', 'Hoàng Minh Đức', 'Nam', '2002-07-09', 'duc.hm@teacher.edu.vn', '0901234571', 'CNTT01', 'Đang dạy'],
+      ['SV006', 'Võ Thị Hoa', 'Nữ', '2003-09-25', 'hoa.vt@teacher.edu.vn', '0901234572', 'CNTT01', 'Đang dạy'],
+      ['SV007', 'Đặng Quốc Huy', 'Nam', '2002-04-18', 'huy.dq@teacher.edu.vn', '0901234573', 'CNTT01', 'Đang dạy'],
+      ['SV008', 'Bùi Thị Lan', 'Nữ', '2003-12-07', 'lan.bt@teacher.edu.vn', '0901234574', 'CNTT01', 'Bảo lưu'],
+      ['SV009', 'Ngô Văn Khánh', 'Nam', '2002-03-22', 'khanh.nv@teacher.edu.vn', '0901234575', 'CNTT01', 'Đang dạy'],
+      ['SV010', 'Đinh Thị Linh', 'Nữ', '2003-06-30', 'linh.dt@teacher.edu.vn', '0901234576', 'CNTT01', 'Đang dạy'],
+      ['SV011', 'Trương Văn Minh', 'Nam', '2002-10-11', 'minh.tv@teacher.edu.vn', '0901234577', 'CNTT02', 'Đang dạy'],
+      ['SV012', 'Phan Thị Ngọc', 'Nữ', '2003-01-19', 'ngoc.pt@teacher.edu.vn', '0901234578', 'CNTT02', 'Đang dạy'],
+      ['SV013', 'Lý Hoàng Phúc', 'Nam', '2002-08-08', 'phuc.lh@teacher.edu.vn', '0901234579', 'CNTT02', 'Đang dạy'],
+      ['SV014', 'Vũ Thị Quỳnh', 'Nữ', '2003-04-15', 'quynh.vt@teacher.edu.vn', '0901234580', 'CNTT02', 'Đang dạy'],
+      ['SV015', 'Tô Văn Sơn', 'Nam', '2002-12-28', 'son.tv@teacher.edu.vn', '0901234581', 'CNTT02', 'Đang dạy'],
+      ['SV016', 'Hồ Thị Trang', 'Nữ', '2003-07-04', 'trang.ht@teacher.edu.vn', '0901234582', 'CNTT02', 'Đang dạy'],
+      ['SV017', 'Châu Văn Tùng', 'Nam', '2002-05-17', 'tung.cv@teacher.edu.vn', '0901234583', 'CNTT02', 'Đang dạy'],
+      ['SV018', 'Dương Thị Uyên', 'Nữ', '2003-11-23', 'uyen.dt@teacher.edu.vn', '0901234584', 'CNTT02', 'Đang dạy'],
+      ['SV019', 'Lâm Văn Vinh', 'Nam', '2002-09-06', 'vinh.lv@teacher.edu.vn', '0901234585', 'CNTT02', 'Tốt nghiệp'],
+      ['SV020', 'Cao Thị Xuân', 'Nữ', '2003-03-14', 'xuan.ct@teacher.edu.vn', '0901234586', 'CNTT02', 'Đang dạy'],
+      ['SV021', 'Đỗ Hoàng Yên', 'Nam', '2002-06-29', 'yen.dh@teacher.edu.vn', '0901234587', 'ATTT01', 'Đang dạy'],
+      ['SV022', 'Mai Thị Hằng', 'Nữ', '2003-10-02', 'hang.mt@teacher.edu.vn', '0901234588', 'ATTT01', 'Đang dạy'],
+      ['SV023', 'Hà Văn Khôi', 'Nam', '2002-02-26', 'khoi.hv@teacher.edu.vn', '0901234589', 'ATTT01', 'Đang dạy'],
+      ['SV024', 'Kiều Thị Mai', 'Nữ', '2003-05-19', 'mai.kt@teacher.edu.vn', '0901234590', 'ATTT01', 'Đang dạy'],
+      ['SV025', 'Thái Văn Nam', 'Nam', '2002-11-11', 'nam.tv@teacher.edu.vn', '0901234591', 'ATTT01', 'Đang dạy'],
+      ['SV026', 'Lưu Thị Oanh', 'Nữ', '2003-08-05', 'oanh.lt@teacher.edu.vn', '0901234592', 'ATTT01', 'Bảo lưu'],
+      ['SV027', 'Tăng Văn Phát', 'Nam', '2002-01-30', 'phat.tv@teacher.edu.vn', '0901234593', 'ATTT01', 'Đang dạy'],
+      ['SV028', 'Quách Thị Quy', 'Nữ', '2003-12-16', 'quy.qt@teacher.edu.vn', '0901234594', 'ATTT01', 'Đang dạy'],
+      ['SV029', 'Tiêu Văn Rôn', 'Nam', '2002-07-23', 'ron.tv@teacher.edu.vn', '0901234595', 'KTPM01', 'Đang dạy'],
+      ['SV030', 'Âu Thị Sen', 'Nữ', '2003-04-08', 'sen.at@teacher.edu.vn', '0901234596', 'KTPM01', 'Đang dạy'],
+      ['SV031', 'Chung Văn Tài', 'Nam', '2002-10-25', 'tai.cv@teacher.edu.vn', '0901234597', 'KTPM01', 'Đang dạy'],
+      ['SV032', 'Mạc Thị Vân', 'Nữ', '2003-06-12', 'van.mt@teacher.edu.vn', '0901234598', 'KTPM01', 'Đang dạy'],
+      ['SV033', 'Nhâm Văn Ưng', 'Nam', '2002-03-09', 'ung.nv@teacher.edu.vn', '0901234599', 'KTPM01', 'Tốt nghiệp'],
+      ['SV034', 'Quan Thị Yến', 'Nữ', '2003-09-28', 'yen.qt@teacher.edu.vn', '0901234600', 'KTPM01', 'Đang dạy'],
+      ['SV035', 'Từ Văn Bảo', 'Nam', '2002-12-04', 'bao.tv@teacher.edu.vn', '0901234601', 'KTPM01', 'Đang dạy'],
+      ['SV036', 'Ứng Thị Cẩm', 'Nữ', '2003-02-21', 'cam.ut@teacher.edu.vn', '0901234602', 'CNTT01', 'Đang dạy'],
+      ['SV037', 'Vương Văn Đạt', 'Nam', '2002-05-15', 'dat.vv@teacher.edu.vn', '0901234603', 'CNTT02', 'Đang dạy'],
+      ['SV038', 'Hứa Thị Giang', 'Nữ', '2003-11-09', 'giang.ht@teacher.edu.vn', '0901234604', 'CNTT02', 'Đang dạy'],
+      ['SV039', 'Kha Văn Hào', 'Nam', '2002-04-02', 'hao.kv@teacher.edu.vn', '0901234605', 'ATTT01', 'Đang dạy'],
+      ['SV040', 'La Thị Kim', 'Nữ', '2003-08-17', 'kim.lt@teacher.edu.vn', '0901234606', 'KTPM01', 'Đang dạy'],
     ];
     return List.generate(names.length, (i) {
       return {
         'id': i + 1,
-        'student_code': names[i][0],
+        'teacher_code': names[i][0],
         'full_name': names[i][1],
         'gender': names[i][2],
         'birth_date': names[i][3],
         'email': names[i][4],
         'phone': names[i][5],
-        'class_name': names[i][6],
+        'department': names[i][6],
         'status': names[i][7],
       };
     });
   }
 
   String _statusOf(Map s) {
-    final raw = (s['academic_status'] ?? s['status'] ?? '').toString().toLowerCase();
-    if (raw == 'suspended' || raw.contains('bảo lưu')) return 'paused';
-    if (raw == 'graduated' || raw.contains('tốt nghiệp')) return 'graduated';
-    if (raw == 'dropout' || raw.contains('thôi')) return 'dropout';
-    return 'studying';
+    final raw = (s['status'] ?? '').toString().toLowerCase();
+    if (raw.contains('bảo lưu') || raw.contains('baolu') || raw == 'paused') return 'paused';
+    if (raw.contains('tốt nghiệp') || raw.contains('totnghiep') || raw == 'graduated') return 'graduated';
+    if (raw.contains('thôi') || raw.contains('nghỉ') || raw == 'quit') return 'quit';
+    return 'teaching';
   }
 
   String _statusLabel(String key) {
@@ -157,10 +157,10 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
         return 'Bảo lưu';
       case 'graduated':
         return 'Tốt nghiệp';
-      case 'dropout':
-        return 'Thôi học';
+      case 'quit':
+        return 'Đã nghỉ';
       default:
-        return 'Đang học';
+        return 'Đang dạy';
     }
   }
 
@@ -170,7 +170,7 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
         return const Color(0xFFF59E0B);
       case 'graduated':
         return const Color(0xFF8B5CF6);
-      case 'dropout':
+      case 'quit':
         return const Color(0xFFEF4444);
       default:
         return const Color(0xFF10B981);
@@ -183,7 +183,7 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
         return const Color(0xFFFFFBEB);
       case 'graduated':
         return const Color(0xFFF5F3FF);
-      case 'dropout':
+      case 'quit':
         return const Color(0xFFFEF2F2);
       default:
         return const Color(0xFFECFDF5);
@@ -191,10 +191,10 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
   }
 
   void _applyFilters() {
-    _filtered = _students.where((s) {
+    _filtered = _teachers.where((s) {
       final name = (s['full_name'] ?? '').toString().toLowerCase();
-      final code = (s['student_code'] ?? '').toString().toLowerCase();
-      final className = (s['class_name'] ?? '').toString();
+      final code = (s['teacher_code'] ?? '').toString().toLowerCase();
+      final className = (s['department'] ?? '').toString();
       final email = (s['email'] ?? '').toString().toLowerCase();
       final status = _statusOf(s);
 
@@ -211,8 +211,8 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
 
   List<String> _getUniqueClasses() {
     final set = <String>{};
-    for (final s in _students) {
-      final c = (s['class_name'] ?? '').toString().trim();
+    for (final s in _teachers) {
+      final c = (s['department'] ?? '').toString().trim();
       if (c.isNotEmpty) set.add(c);
     }
     final list = set.toList();
@@ -239,13 +239,13 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
     }
   }
 
-  Future<void> _deleteStudent(int id) async {
+  Future<void> _deleteTeacher(int id) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Xóa sinh viên'),
-        content: const Text('Bạn có chắc muốn xóa sinh viên này? Hành động không thể hoàn tác.'),
+        title: const Text('Xóa giáo viên'),
+        content: const Text('Bạn có chắc muốn xóa giáo viên này? Hành động không thể hoàn tác.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Hủy')),
           ElevatedButton(
@@ -258,10 +258,10 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
     );
     if (confirm != true) return;
     try {
-      await ApiService.deleteStudent(id);
-      await _loadStudents();
+      await ApiService.deleteTeacher(id);
+      await _loadTeachers();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã xóa sinh viên')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã xóa giáo viên')));
       }
     } catch (e) {
       if (mounted) {
@@ -270,20 +270,18 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
     }
   }
 
-  void _showAddForm() => _openStudentForm();
-  void _showEditForm(Map<String, dynamic> s) => _openStudentForm(existing: s);
+  void _showAddForm() => _openTeacherForm();
+  void _showEditForm(Map<String, dynamic> s) => _openTeacherForm(existing: s);
 
-  Future<void> _openStudentForm({Map<String, dynamic>? existing}) async {
-    final codeC = TextEditingController(text: existing?['student_code']?.toString() ?? '');
+  Future<void> _openTeacherForm({Map<String, dynamic>? existing}) async {
+    final codeC = TextEditingController(text: existing?['teacher_code']?.toString() ?? '');
     final nameC = TextEditingController(text: existing?['full_name']?.toString() ?? '');
     final emailC = TextEditingController(text: existing?['email']?.toString() ?? '');
     final phoneC = TextEditingController(text: existing?['phone']?.toString() ?? '');
-    final classC = TextEditingController(text: existing?['class_name']?.toString() ?? '');
-    final rawBirth = existing?['birth_date']?.toString() ?? '';
-    final formattedBirth = rawBirth.length >= 10 ? rawBirth.substring(0, 10) : rawBirth;
-    final birthC = TextEditingController(text: formattedBirth);
+    final classC = TextEditingController(text: existing?['department']?.toString() ?? '');
+    final birthC = TextEditingController(text: existing?['birth_date']?.toString() ?? '');
     String gender = existing?['gender']?.toString() ?? 'Nam';
-    String status = existing != null ? _statusLabel(_statusOf(existing)) : 'Đang học';
+    String status = existing != null ? _statusLabel(_statusOf(existing)) : 'Đang dạy';
     final classes = _getUniqueClasses();
     final isEdit = existing != null;
 
@@ -315,13 +313,13 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
                     ),
                     const SizedBox(width: 12),
                     Text(
-                      isEdit ? 'Sửa sinh viên' : 'Thêm sinh viên mới',
+                      isEdit ? 'Sửa giáo viên' : 'Thêm giáo viên mới',
                       style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                     ),
                   ]),
                   const SizedBox(height: 20),
                   Row(children: [
-                    Expanded(child: _inputField(isEdit ? 'Mã sinh viên' : 'Mã sinh viên *', codeC)),
+                    Expanded(child: _inputField(isEdit ? 'Mã giáo viên' : 'Mã giáo viên *', codeC)),
                     const SizedBox(width: 12),
                     Expanded(child: _inputField(isEdit ? 'Họ và tên' : 'Họ và tên *', nameC)),
                   ]),
@@ -384,7 +382,7 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
                     DropdownButtonFormField<String>(
                       value: classes.contains(classC.text) ? classC.text : null,
                       decoration: const InputDecoration(
-                        labelText: 'Lớp',
+                        labelText: 'Phòng ban',
                         border: OutlineInputBorder(),
                         isDense: true,
                       ),
@@ -394,7 +392,7 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
                       onChanged: (v) => setLocal(() => classC.text = v ?? ''),
                     )
                   else
-                    _inputField('Lớp', classC),
+                    _inputField('Phòng ban', classC),
                   if (isEdit) ...[
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
@@ -405,12 +403,12 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
                         isDense: true,
                       ),
                       items: const [
-                        DropdownMenuItem(value: 'Đang học', child: Text('Đang học')),
-                        DropdownMenuItem(value: 'Bảo lưu', child: Text('Bảo lưu')),
-                        DropdownMenuItem(value: 'Tốt nghiệp', child: Text('Tốt nghiệp')),
-                        DropdownMenuItem(value: 'Thôi học', child: Text('Thôi học')),
+                        DropdownMenuItem(value: 'Đang dạy', child: Text('Đang dạy')),
+                        
+                        
+                        DropdownMenuItem(value: 'Đã nghỉ', child: Text('Đã nghỉ')),
                       ],
-                      onChanged: (v) => setLocal(() => status = v ?? 'Đang học'),
+                      onChanged: (v) => setLocal(() => status = v ?? 'Đang dạy'),
                     ),
                   ],
                   const SizedBox(height: 20),
@@ -434,29 +432,27 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
                           }
                           try {
                             final payload = <String, dynamic>{
-                              'student_code': codeC.text.trim(),
+                              'teacher_code': codeC.text.trim(),
                               'full_name': nameC.text.trim(),
                               'gender': gender,
                               'birth_date': birthC.text.isNotEmpty ? birthC.text : null,
                               'email': emailC.text.trim(),
                               'phone': phoneC.text.trim(),
-                              'class_name': classC.text.trim(),
-                              'academic_status': status == 'Bảo lưu' ? 'suspended' :
-                                                 status == 'Tốt nghiệp' ? 'graduated' :
-                                                 status == 'Thôi học' ? 'dropout' : 'active',
+                              'department': classC.text.trim(),
+                              'status': status == 'Đang dạy' ? 'active' : 'quit',
                             };
                             if (isEdit) {
-                              await ApiService.updateStudent(existing['id'] as int, payload);
+                              await ApiService.updateTeacher(existing['id'] as int, payload);
                 } else {
-                              await ApiService.addStudent(payload);
+                              await ApiService.addTeacher(payload);
                             }
                             if (!ctx.mounted) return;
                             Navigator.pop(ctx);
-                            await _loadStudents();
+                            await _loadTeachers();
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: Text(isEdit ? 'Đã cập nhật sinh viên' : 'Đã thêm sinh viên'),
+                                  content: Text(isEdit ? 'Đã cập nhật giáo viên' : 'Đã thêm giáo viên'),
                                   backgroundColor: const Color(0xFF10B981),
                                 ),
                               );
@@ -470,7 +466,7 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
                           }
                         },
                         icon: Icon(isEdit ? Icons.save_rounded : Icons.person_add_alt, size: 18),
-                        label: Text(isEdit ? 'Lưu thay đổi' : 'Thêm sinh viên'),
+                        label: Text(isEdit ? 'Lưu thay đổi' : 'Thêm giáo viên'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isEdit ? const Color(0xFF6366F1) : const Color(0xFFF97316),
                           foregroundColor: Colors.white,
@@ -518,7 +514,7 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
     return Scaffold(
       backgroundColor: const Color(0xFFF3F6FB),
       appBar: AppBar(
-        title: const Text('Quản lý sinh viên'),
+        title: const Text('Quản lý giáo viên'),
         backgroundColor: Colors.orange.shade700,
         foregroundColor: Colors.white,
         elevation: 0,
@@ -529,7 +525,7 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
               child: ElevatedButton.icon(
                 onPressed: _showAddForm,
                 icon: const Icon(Icons.add, size: 18),
-                label: const Text('Thêm sinh viên'),
+                label: const Text('Thêm giáo viên'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
                   foregroundColor: Colors.orange.shade700,
@@ -580,16 +576,16 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: const [
-                Text('Quản lý sinh viên',
+                Text('Quản lý giáo viên',
                     style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
                 SizedBox(height: 4),
-                Text('Theo dõi, tìm kiếm và quản lý hồ sơ sinh viên trong hệ thống',
+                Text('Theo dõi, tìm kiếm và quản lý hồ sơ giáo viên trong hệ thống',
                     style: TextStyle(color: Colors.white70, fontSize: 13)),
               ],
             ),
           ),
           IconButton(
-            onPressed: _loadStudents,
+            onPressed: _loadTeachers,
             icon: const Icon(Icons.refresh, color: Colors.white),
             tooltip: 'Làm mới',
           ),
@@ -599,7 +595,7 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
   }
 
   Widget _buildBody() {
-    if (_isLoading && _students.isEmpty) {
+    if (_isLoading && _teachers.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
     final padding = EdgeInsets.symmetric(horizontal: _embedded ? 20 : 16);
@@ -633,8 +629,8 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
                     indicatorWeight: 3,
                     labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
                     tabs: const [
-                      Tab(icon: Icon(Icons.list_alt, size: 18), text: 'Danh sách sinh viên'),
-                      Tab(icon: Icon(Icons.person_add, size: 18), text: 'Thêm sinh viên'),
+                      Tab(icon: Icon(Icons.list_alt, size: 18), text: 'Danh sách giáo viên'),
+                      Tab(icon: Icon(Icons.person_add, size: 18), text: 'Thêm giáo viên'),
                     ],
                   ),
                   Expanded(
@@ -656,26 +652,22 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
   }
 
   Widget _buildStatCards() {
-    final total = _students.length;
-    final studying = _students.where((s) => _statusOf(s) == 'studying').length;
-    final paused = _students.where((s) => _statusOf(s) == 'paused').length;
-    final graduated = _students.where((s) => _statusOf(s) == 'graduated').length;
-
+    final total = _teachers.length;
+    final teaching = _teachers.where((s) => _statusOf(s) == 'teaching').length;
+        
     final cards = [
-      _statCard('Tổng sinh viên', '$total', 'Tất cả hồ sơ',
+      _statCard('Tổng giáo viên', '$total', 'Tất cả hồ sơ',
           const Color(0xFFF97316), const Color(0xFFFFEDD5), Icons.people_alt_rounded),
-      _statCard('Đang học', '$studying', 'Hoạt động',
+      _statCard('Đang dạy', '$teaching', 'Hoạt động',
           const Color(0xFF10B981), const Color(0xFFECFDF5), Icons.school_rounded),
-      _statCard('Bảo lưu', '$paused', 'Tạm dừng',
-          const Color(0xFFF59E0B), const Color(0xFFFFFBEB), Icons.pause_circle_outline_rounded),
-      _statCard('Tốt nghiệp', '$graduated', 'Đã hoàn thành',
-          const Color(0xFF8B5CF6), const Color(0xFFF5F3FF), Icons.workspace_premium_rounded),
+       const Color(0xFFFFFBEB), Icons.pause_circle_outline_rounded),
+       const Color(0xFFF5F3FF), Icons.workspace_premium_rounded),
     ];
 
     return LayoutBuilder(
       builder: (ctx, c) {
         final width = c.maxWidth;
-        final cardWidth = ((width - 14 * 3) / 4).clamp(160.0, 9999.0);
+        final cardWidth = ((width - 14 * (cards.length - 1)) / cards.length).clamp(160.0, 9999.0);
         return Wrap(
           spacing: 14,
           runSpacing: 14,
@@ -727,7 +719,7 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
               children: [
                 Icon(Icons.search_off, size: 64, color: Colors.grey.shade300),
                 const SizedBox(height: 8),
-                Text('Không tìm thấy sinh viên nào', style: TextStyle(color: Colors.grey.shade600)),
+                Text('Không tìm thấy giáo viên nào', style: TextStyle(color: Colors.grey.shade600)),
               ],
             ),
           )
@@ -753,7 +745,7 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
                             child: TextField(
                               controller: _searchController,
                               decoration: const InputDecoration(
-                                hintText: 'Tìm theo tên, mã SV, email, lớp...',
+                                hintText: 'Tìm theo tên, mã SV, email, phòng ban...',
                                 border: InputBorder.none,
                                 isCollapsed: true,
                                 contentPadding: EdgeInsets.symmetric(vertical: 12),
@@ -772,9 +764,9 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
                     ),
                     const SizedBox(width: 10),
                     _filterDropdown(
-                      'Lớp',
+                      'Phòng ban',
                       _classFilter,
-                      {'all': 'Tất cả lớp', ...{for (final c in _getUniqueClasses()) c: c}},
+                      {'all': 'Tất cả phòng ban', ...{for (final c in _getUniqueClasses()) c: c}},
                       (v) {
                         setState(() {
                           _classFilter = v ?? 'all';
@@ -789,10 +781,10 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
                       _statusFilter,
                       const {
                         'all': 'Tất cả',
-                        'studying': 'Đang học',
-                        'paused': 'Bảo lưu',
-                        'graduated': 'Tốt nghiệp',
-                        'dropout': 'Thôi học',
+                        'teaching': 'Đang dạy',
+                        
+                        
+                        'quit': 'Đã nghỉ',
                       },
                       (v) {
                         setState(() {
@@ -857,9 +849,9 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
                 child: Row(
                   children: const [
                     SizedBox(width: 42, child: Text('ID', style: _headerStyle)),
-                    Expanded(flex: 3, child: Text('Sinh viên', style: _headerStyle)),
+                    Expanded(flex: 3, child: Text('Giáo viên', style: _headerStyle)),
                     Expanded(flex: 2, child: Text('Liên hệ', style: _headerStyle)),
-                    Expanded(flex: 2, child: Text('Lớp', style: _headerStyle)),
+                    Expanded(flex: 2, child: Text('Phòng ban', style: _headerStyle)),
                     SizedBox(width: 110, child: Text('Ngày sinh', style: _headerStyle)),
                     SizedBox(width: 110, child: Text('Trạng thái', style: _headerStyle)),
                     SizedBox(width: 90, child: Text('Hành động', style: _headerStyle, textAlign: TextAlign.center)),
@@ -870,7 +862,7 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
               ...pageRows.asMap().entries.map((e) {
                 final idx = e.key;
                 final s = e.value as Map;
-                return _studentRow(s, idx);
+                return _teacherRow(s, idx);
               }),
             ],
           ),
@@ -885,12 +877,12 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
     fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF6B7280), letterSpacing: 0.3,
   );
 
-  Widget _studentRow(Map s, int idx) {
-    final code = (s['student_code'] ?? '').toString();
+  Widget _teacherRow(Map s, int idx) {
+    final code = (s['teacher_code'] ?? '').toString();
     final name = (s['full_name'] ?? '').toString();
     final email = (s['email'] ?? '').toString();
     final phone = (s['phone'] ?? '').toString();
-    final className = (s['class_name'] ?? '—').toString();
+    final className = (s['department'] ?? '—').toString();
     final birthDate = _formatDate(s['birth_date']);
     final age = _ageOf(s['birth_date']);
     final statusKey = _statusOf(s);
@@ -1027,7 +1019,7 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
                       ),
                       const SizedBox(width: 6),
                       InkWell(
-                        onTap: () => _deleteStudent(s['id'] as int),
+                        onTap: () => _deleteTeacher(s['id'] as int),
                         borderRadius: BorderRadius.circular(6),
                         child: Container(
                           padding: const EdgeInsets.all(6),
@@ -1061,7 +1053,7 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
           Text(
             _filtered.isEmpty
                 ? 'Không có kết quả'
-                : 'Hiển thị ${start + 1}-$end của ${_filtered.length} sinh viên',
+                : 'Hiển thị ${start + 1}-$end của ${_filtered.length} giáo viên',
             style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
           ),
           Row(
@@ -1116,13 +1108,13 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
                 child: const Icon(Icons.person_add, color: Color(0xFFF97316), size: 22),
               ),
               const SizedBox(width: 12),
-              const Text('Tạo hồ sơ sinh viên mới',
+              const Text('Tạo hồ sơ giáo viên mới',
                   style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
             ],
           ),
           const SizedBox(height: 8),
           Text(
-            'Điền các thông tin bên dưới để thêm sinh viên vào hệ thống. Mật khẩu mặc định sẽ là mã sinh viên.',
+            'Điền các thông tin bên dưới để thêm giáo viên vào hệ thống. Mật khẩu mặc định sẽ là mã giáo viên.',
             style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
           ),
           const SizedBox(height: 18),
@@ -1147,7 +1139,7 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
                   const SizedBox(width: 16),
                   Expanded(
                     child: _inlineFormField(
-                      label: 'Mã sinh viên *',
+                      label: 'Mã giáo viên *',
                       hint: 'SV001',
                       icon: Icons.badge,
                       controller: TextEditingController(),
@@ -1178,7 +1170,7 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
                 Row(children: [
                   Expanded(
                     child: _inlineFormField(
-                      label: 'Lớp',
+                      label: 'Phòng ban',
                       hint: 'CNTT-K15',
                       icon: Icons.class_,
                       controller: TextEditingController(),
@@ -1197,7 +1189,7 @@ class _StudentsScreenState extends State<StudentsScreen> with SingleTickerProvid
                                           children: [
                           const Icon(Icons.check_circle_outline, color: Color(0xFFF97316)),
                           const SizedBox(width: 10),
-                          const Text('Trạng thái: Đang học', style: TextStyle(fontWeight: FontWeight.w600)),
+                          const Text('Trạng thái: Đang dạy', style: TextStyle(fontWeight: FontWeight.w600)),
                         ],
                       ),
                     ),

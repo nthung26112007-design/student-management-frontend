@@ -336,8 +336,9 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
   }
 
   Widget _classDropdown() {
-    // Phòng trường hợp value chưa có trong items, fallback về item đầu tiên để tránh crash DropdownButton
-    final items = _classOptions;
+    // Loại bỏ trùng lặp bằng Set để tránh lỗi "exactly one item with value"
+    final uniqueItems = _classOptions.toSet().toList();
+    final items = uniqueItems.isEmpty ? [''] : uniqueItems;
     final value = (items.contains(_classFilter)) ? _classFilter : (items.isNotEmpty ? items.first : null);
 
     return Container(
@@ -981,8 +982,9 @@ class _AddScheduleSheetState extends State<_AddScheduleSheet> {
     required String hint,
     required ValueChanged<String?> onChanged,
   }) {
-    // Đảm bảo value luôn nằm trong items (tránh DropdownButton crash)
-    final safeItems = items.isEmpty ? const [''] : items;
+    // Loại bỏ trùng lặp bằng Set để tránh lỗi "exactly one item with value"
+    final uniqueItems = items.toSet().toList();
+    final safeItems = uniqueItems.isEmpty ? const [''] : uniqueItems;
     final actualValue = (value != null && safeItems.contains(value))
         ? value
         : (safeItems.isNotEmpty && safeItems.first.isNotEmpty ? safeItems.first : null);
@@ -1043,7 +1045,8 @@ class _ScheduleDetailSheet extends StatelessWidget {
     final subjectCode = schedule['subject_code']?.toString() ?? '';
     final subjectName = schedule['subject_name']?.toString() ?? '';
     final className = schedule['class_name']?.toString() ?? '';
-    final date = schedule['date']?.toString() ?? '';
+    final rawDate = schedule['date']?.toString() ?? '';
+    final date = rawDate.length >= 10 ? rawDate.substring(0, 10) : rawDate;
     final dayOfWeek = schedule['day_of_week']?.toString() ?? '';
     final time = schedule['time']?.toString() ?? '';
     final room = schedule['room']?.toString() ?? '';

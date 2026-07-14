@@ -28,15 +28,25 @@ class _MyGradesScreenState extends State<MyGradesScreen> {
   List<String> _subjectOptions = [];
   String _selectedSubject = '';
 
+  // Map học kỳ → danh sách môn (đồng bộ với curriculum)
+  static const Map<String, List<String>> _subjectsBySemester = {
+    'Học kỳ 1 - 2024-2025': ['IT001 - Lập trình cơ bản', 'IT002 - Cơ sở dữ liệu'],
+    'Học kỳ 2 - 2024-2025': ['IT003 - Cấu trúc dữ liệu & Giải thuật', 'IT004 - Lập trình Web'],
+    'Học kỳ 1 - 2025-2026': ['IT005 - Mạng máy tính', 'IT006 - Trí tuệ nhân tạo'],
+  };
+
+  List<String> get _filteredSubjectOptions {
+    if (_selectedSemester.isEmpty) return _subjectOptions;
+    return _subjectsBySemester[_selectedSemester] ?? _subjectOptions;
+  }
+
   @override
   void initState() {
     super.initState();
-    _loadFilters();
-    _loadData();
+    _loadFilters().then((_) => _loadData());
   }
 
   Future<void> _loadFilters() async {
-    // 1. Load semesters
     List<String> semesters;
     try {
       semesters = await MockDataService.getGradeBookSemesters();
@@ -44,20 +54,14 @@ class _MyGradesScreenState extends State<MyGradesScreen> {
       semesters = [];
     }
 
-    // 2. Load subjects
-    List<String> subjects;
-    try {
-      subjects = await MockDataService.getGradeBookSubjects();
-    } catch (_) {
-      subjects = [];
-    }
-
     if (!mounted) return;
-
     setState(() {
       _semesterOptions = semesters;
-      _selectedSemester = semesters.isNotEmpty ? semesters.first : '';
-      _subjectOptions = subjects;
+      // Bỏ qua '' ở đầu — chọn học kỳ đầu tiên thực sự
+      _selectedSemester = semesters.isNotEmpty && semesters.first.isNotEmpty
+          ? semesters.first
+          : (semesters.length > 1 ? semesters[1] : '');
+      _subjectOptions = [];
       _selectedSubject = '';
     });
   }
@@ -65,12 +69,15 @@ class _MyGradesScreenState extends State<MyGradesScreen> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      // Map tên học kỳ → id
+      // Map tên học kỳ → id (bỏ qua '' ở đầu)
       int? semesterId;
       if (_selectedSemester.isNotEmpty) {
         final idx = _semesterOptions.indexOf(_selectedSemester);
-        if (idx >= 0) {
-          semesterId = MockDataService.canonicalSemesters[idx]['semester_id'] as int;
+        // indexOf trả về vị trí trong _semesterOptions (bắt đầu từ 0 với '')
+        // canonicalSemesters[0] tương ứng với _semesterOptions[1] vì có '' ở index 0
+        final canonicalIdx = idx - 1;
+        if (canonicalIdx >= 0 && canonicalIdx < canonicalSemesters.length) {
+          semesterId = canonicalSemesters[canonicalIdx]['semester_id'] as int;
         }
       }
 
@@ -213,6 +220,7 @@ class _MyGradesScreenState extends State<MyGradesScreen> {
 
     return LayoutBuilder(builder: (context, c) {
       final isWide = c.maxWidth >= 500;
+      final filteredSubj = _filteredSubjectOptions;
       return Wrap(
         spacing: 12,
         runSpacing: 12,
@@ -226,7 +234,11 @@ class _MyGradesScreenState extends State<MyGradesScreen> {
               items: semItems,
               onChanged: (v) {
                 if (v != null && v != _selectedSemester) {
-                  setState(() => _selectedSemester = v);
+                  setState(() {
+                    _selectedSemester = v;
+                    // Reset subject khi đổi học kỳ để tránh giá trị không còn trong dropdown
+                    _selectedSubject = '';
+                  });
                   _loadData();
                 }
               },
@@ -237,8 +249,8 @@ class _MyGradesScreenState extends State<MyGradesScreen> {
             child: _filterDropdown(
               icon: Icons.menu_book_rounded,
               hint: 'Tất cả môn',
-              value: subjValue,
-              items: subjItems,
+              value: filteredSubj.contains(_selectedSubject) ? _selectedSubject : '',
+              items: filteredSubj.isEmpty ? ['—'] : filteredSubj,
               onChanged: (v) {
                 if (v != null && v != _selectedSubject) {
                   setState(() => _selectedSubject = v);
@@ -259,7 +271,9 @@ class _MyGradesScreenState extends State<MyGradesScreen> {
     required List<String> items,
     required ValueChanged<String?> onChanged,
   }) {
-    final safeItems = items.isEmpty ? ['—'] : items;
+    // Loại bỏ trùng lặp bằng Set để tránh lỗi "exactly one item with value"
+    final uniqueItems = items.toSet().toList();
+    final safeItems = uniqueItems.isEmpty ? ['—'] : uniqueItems;
     final safeValue = safeItems.contains(value) ? value : (safeItems.isNotEmpty ? safeItems.first : '');
 
     return Container(

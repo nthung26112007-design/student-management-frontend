@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/mock_data_service.dart';
-
+import '../services/api_service.dart';
 class GradesScreen extends StatefulWidget {
   final int? studentId;
   final String? studentName;
@@ -20,6 +20,7 @@ class GradesScreen extends StatefulWidget {
 class _GradesScreenState extends State<GradesScreen> {
   List<Map<String, dynamic>> _rows = [];
   Map<String, dynamic> _stats = {};
+  List<Map<String, dynamic>> _apiStudents = [];
   List<String> _classOptions = [];
   List<String> _semesterOptions = [];
   List<String> _subjectOptions = [];
@@ -38,9 +39,8 @@ class _GradesScreenState extends State<GradesScreen> {
   @override
   void initState() {
     super.initState();
-    _loadFilters();
-    _loadData();
     _searchController.addListener(_onSearchChanged);
+    _loadFilters().then((_) => _loadData());
   }
 
   @override
@@ -51,26 +51,39 @@ class _GradesScreenState extends State<GradesScreen> {
   }
 
   Future<void> _loadFilters() async {
-    final results = await Future.wait([
-      MockDataService.getGradeBookClasses(),
-      MockDataService.getGradeBookSemesters(),
-      MockDataService.getGradeBookSubjects(),
-    ]);
+    List<String> classes = [];
+    
+    try {
+      final studentsData = await ApiService.getStudents();
+      if (studentsData is List) {
+        _apiStudents = studentsData.map((e) => Map<String, dynamic>.from(e)).toList();
+        classes = _apiStudents
+            .map((e) => (e['class_name'] ?? '').toString().trim())
+            .where((c) => c.isNotEmpty)
+            .toSet()
+            .toList();
+        classes.sort();
+      }
+    } catch (_) {}
+
+    // Fallbacks
+    if (classes.isEmpty) {
+      classes = await MockDataService.getGradeBookClasses();
+    } else {
+      classes.insert(0, '');
+    }
+
     if (!mounted) return;
     setState(() {
-      _classOptions = results[0];
-      _semesterOptions = results[1];
-      _subjectOptions = results[2];
-      // Map name → id để truyền đúng vào service
-      _semesterIdMap.clear();
-      for (var i = 0; i < MockDataService.canonicalSemesters.length; i++) {
-        final m = MockDataService.canonicalSemesters[i];
-        _semesterIdMap[m['semester_name'] as String] = m['semester_id'] as int;
-      }
+      _classOptions = classes;
+      _selectedClass = (classes.length > 1 && classes[0].isEmpty) ? classes[1] : (classes.isNotEmpty ? classes.first : null);
     });
+
+    await _reloadSubjectsAndLoad();
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       // Map tên học kỳ đang chọn (nếu có) → id thật
@@ -83,6 +96,7 @@ class _GradesScreenState extends State<GradesScreen> {
         semesterId: semesterId,
         subjectCode: _selectedSubject?.split(' - ').first,
         search: _searchController.text,
+        fromStudents: _apiStudents.isNotEmpty ? _apiStudents : null,
       );
       // Stats tính từ chính rows vừa load (không dùng số cứng)
       final stats = await MockDataService.getGradeBookStats(fromRows: rows);
@@ -100,6 +114,84 @@ class _GradesScreenState extends State<GradesScreen> {
   }
 
   void _onSearchChanged() {
+    _loadData();
+  }
+
+  Future<void> _reloadSubjectsAndLoad() async {
+    // 1. Reload semesters based on _selectedClass
+    List<String> semesters = [];
+    _semesterIdMap.clear();
+    try {
+      final semesterData = await ApiService.getSemesters(
+        className: (_selectedClass == null || _selectedClass!.isEmpty) ? null : _selectedClass,
+      );
+      if (semesterData is List) {
+        for (final sem in semesterData) {
+           final name = sem['name'] ?? sem['semester_name'] ?? '';
+           final id = sem['id'];
+           if (name.isNotEmpty && id != null) {
+              semesters.add(name);
+              _semesterIdMap[name] = id;
+           }
+        }
+      }
+    } catch (_) {}
+    
+    if (semesters.isEmpty) {
+      semesters = await MockDataService.getGradeBookSemesters();
+      for (var m in MockDataService.canonicalSemesters) {
+        _semesterIdMap[m['semester_name'] as String] = m['semester_id'] as int;
+      }
+    } else {
+      semesters.insert(0, '');
+    }
+
+    // Reset selected semester if it's no longer valid
+    if (_selectedSemester != null && !_semesterIdMap.containsKey(_selectedSemester) && _selectedSemester != '') {
+       _selectedSemester = semesters.length > 1 ? semesters[1] : (semesters.isNotEmpty ? semesters.first : null);
+    } else if (_selectedSemester == null) {
+       _selectedSemester = semesters.length > 1 ? semesters[1] : (semesters.isNotEmpty ? semesters.first : null);
+    }
+
+    int? semesterId;
+    if (_selectedSemester != null && _semesterIdMap.containsKey(_selectedSemester)) {
+      semesterId = _semesterIdMap[_selectedSemester];
+    }
+    
+    // 2. Reload subjects
+    List<String> subjects = [];
+    try {
+       final courseData = await ApiService.getCourses(
+         className: (_selectedClass == null || _selectedClass!.isEmpty) ? null : _selectedClass,
+         semesterId: semesterId,
+       );
+       if (courseData is List) {
+          subjects = courseData.map((e) {
+            final code = e['code'] ?? e['subject_code'] ?? '';
+            final name = e['name'] ?? e['subject_name'] ?? '';
+            return '$code - $name'.trim();
+          }).where((s) => s != '-').toSet().toList();
+          subjects.sort();
+       }
+    } catch (_) {}
+    
+    if (subjects.isEmpty) {
+      subjects = await MockDataService.getGradeBookFilteredSubjects(
+        className: (_selectedClass == null || _selectedClass!.isEmpty) ? null : _selectedClass,
+        semesterId: semesterId,
+      );
+    } else {
+      subjects.insert(0, '');
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _semesterOptions = semesters;
+      _subjectOptions = subjects;
+      if (_selectedSubject != null && !subjects.contains(_selectedSubject)) {
+        _selectedSubject = null;
+      }
+    });
     _loadData();
   }
 
@@ -293,6 +385,12 @@ class _GradesScreenState extends State<GradesScreen> {
     );
   }
 
+  List<String> get _filteredSubjectOptions {
+    return _subjectOptions;
+  }
+
+  // ============ Filter row ============
+
   Widget _buildFilterRow() {
     return LayoutBuilder(builder: (context, c) {
       final isWide = c.maxWidth >= 700;
@@ -305,20 +403,32 @@ class _GradesScreenState extends State<GradesScreen> {
             hint: 'Tất cả lớp',
             value: _selectedClass,
             items: _classOptions,
-            onChanged: (v) { setState(() => _selectedClass = v); _loadData(); },
+            onChanged: (v) {
+              setState(() {
+                _selectedClass = v;
+                _selectedSubject = null;
+              });
+              _reloadSubjectsAndLoad();
+            },
           )),
           SizedBox(width: isWide ? (c.maxWidth - 36) / 4 : c.maxWidth, child: _filterDropdown(
             icon: Icons.calendar_month_rounded,
             hint: 'Tất cả kỳ học',
             value: _selectedSemester,
             items: _semesterOptions,
-            onChanged: (v) { setState(() => _selectedSemester = v); _loadData(); },
+            onChanged: (v) {
+              setState(() {
+                _selectedSemester = v;
+                _selectedSubject = null;
+              });
+              _reloadSubjectsAndLoad();
+            },
           )),
           SizedBox(width: isWide ? (c.maxWidth - 36) / 4 : c.maxWidth, child: _filterDropdown(
             icon: Icons.menu_book_rounded,
             hint: 'Tất cả môn học',
             value: _selectedSubject,
-            items: _subjectOptions,
+            items: _filteredSubjectOptions,
             onChanged: (v) { setState(() => _selectedSubject = v); _loadData(); },
           )),
           SizedBox(width: isWide ? (c.maxWidth - 36) / 4 : c.maxWidth, child: _searchField()),
@@ -334,9 +444,11 @@ class _GradesScreenState extends State<GradesScreen> {
     required List<String> items,
     required ValueChanged<String?> onChanged,
   }) {
+    // Loại bỏ trùng lặp để tránh lỗi "exactly one item with value"
+    final uniqueItems = items.toSet().toList();
     // Đảm bảo value luôn nằm trong items (tránh DropdownButton crash).
-    final safeItems = items.isEmpty ? [''] : items;
-    final safeValue = (value != null && safeItems.contains(value)) ? value : '';
+    final safeItems = uniqueItems.isEmpty ? [''] : uniqueItems;
+    final safeValue = (value != null && safeItems.contains(value)) ? value : (safeItems.isNotEmpty ? safeItems.first : null);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
@@ -477,7 +589,7 @@ class _GradesScreenState extends State<GradesScreen> {
         children: [
           SizedBox(
             width: 80,
-            child: Text(r['student_code'] as String,
+            child: Text((r['student_code'] ?? '').toString(),
                 style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Color(0xFF111827))),
           ),
           Expanded(
@@ -492,13 +604,15 @@ class _GradesScreenState extends State<GradesScreen> {
                   ),
                   alignment: Alignment.center,
                   child: Text(
-                    (r['full_name'] as String).substring(0, 1).toUpperCase(),
+                    (r['full_name'] ?? '').toString().isNotEmpty
+                        ? (r['full_name'] as String).substring(0, 1).toUpperCase()
+                        : '?',
                     style: const TextStyle(color: Color(0xFFD97706), fontWeight: FontWeight.w900, fontSize: 11),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(r['full_name'] as String,
+                  child: Text((r['full_name'] ?? '').toString(),
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF111827))),
                 ),
@@ -507,7 +621,7 @@ class _GradesScreenState extends State<GradesScreen> {
           ),
           SizedBox(
             width: 80,
-            child: Text(r['class_name'] as String,
+            child: Text((r['class_name'] ?? '').toString(),
                 style: const TextStyle(fontSize: 11, color: Color(0xFF374151), fontWeight: FontWeight.w600)),
           ),
           Expanded(
@@ -515,26 +629,26 @@ class _GradesScreenState extends State<GradesScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(r['subject_name'] as String,
+                Text((r['subject_name'] ?? '').toString(),
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF111827))),
-                Text(r['subject_code'] as String,
+                Text((r['subject_code'] ?? '').toString(),
                     style: const TextStyle(fontSize: 10, color: Color(0xFF9CA3AF))),
               ],
             ),
           ),
-          _scoreCell('${r['cc_score']}'),
-          _scoreCell('${r['qkt_score']}'),
-          _scoreCell('${r['ckt_score']}'),
+          _scoreCell(r['cc_score']),
+          _scoreCell(r['qkt_score']),
+          _scoreCell(r['ckt_score']),
           SizedBox(
             width: 60,
             child: Center(
               child: Text(
-                '${r['total_score']}',
+                r['total_score']?.toString() ?? '—',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w900,
-                  color: pass ? const Color(0xFF15803D) : const Color(0xFFB91C1C),
+                  color: (r['total_score'] != null) ? (pass ? const Color(0xFF15803D) : const Color(0xFFB91C1C)) : const Color(0xFF9CA3AF),
                 ),
               ),
             ),
@@ -545,11 +659,15 @@ class _GradesScreenState extends State<GradesScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: _gradeBg(r['grade'] as String),
+                  color: r['grade'] != null ? _gradeBg(r['grade'] as String) : const Color(0xFFF3F4F6),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(r['grade'] as String,
-                    style: TextStyle(color: _gradeFg(r['grade'] as String), fontWeight: FontWeight.w900, fontSize: 11)),
+                child: Text(
+                  r['grade']?.toString() ?? '—',
+                  style: TextStyle(
+                    color: r['grade'] != null ? _gradeFg(r['grade'] as String) : const Color(0xFF9CA3AF),
+                    fontWeight: FontWeight.w900, fontSize: 11),
+                ),
               ),
             ),
           ),
@@ -594,12 +712,20 @@ class _GradesScreenState extends State<GradesScreen> {
     );
   }
 
-  Widget _scoreCell(String v) {
-    final i = int.tryParse(v) ?? 0;
+  Widget _scoreCell(dynamic v) {
+    if (v == null || v.toString() == 'null') {
+      return const SizedBox(
+        width: 60,
+        child: Center(
+          child: Text('—', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Color(0xFF9CA3AF))),
+        ),
+      );
+    }
+    final i = double.tryParse(v.toString()) ?? 0;
     return SizedBox(
       width: 60,
       child: Center(
-        child: Text(v, style: TextStyle(
+        child: Text(v.toString(), style: TextStyle(
           fontWeight: FontWeight.w700,
           fontSize: 12,
           color: i >= 5 ? const Color(0xFF111827) : const Color(0xFFB91C1C),
@@ -712,6 +838,16 @@ class _GradesScreenState extends State<GradesScreen> {
   // ===== Action handlers =====
 
   void _showAddGradeDialog() async {
+    // Lấy danh sách SV của lớp đang chọn để chọn
+    final students = _apiStudents.isNotEmpty ? _apiStudents : MockDataService.canonicalStudents;
+    final className = (_selectedClass == null || _selectedClass!.isEmpty)
+        ? null
+        : _selectedClass;
+    final filteredStudents = students
+        .where((s) => className == null || (s['class_name'] ?? '').toString().trim() == className)
+        .toList();
+
+    if (!mounted) return;
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) => Dialog(
@@ -722,41 +858,40 @@ class _GradesScreenState extends State<GradesScreen> {
           child: _AddGradeDialog(
             classOptions: _classOptions,
             semesterOptions: _semesterOptions,
-            subjectOptions: _subjectOptions,
+            subjectOptions: _filteredSubjectOptions,
+            semesterIdMap: _semesterIdMap,
+            students: filteredStudents,
+            // Pre-fill từ filter hiện tại
+            initialClass: _selectedClass,
+            initialSemester: _selectedSemester,
+            initialSubject: _selectedSubject,
           ),
         ),
       ),
     );
 
     if (result == null || !mounted) return;
-    // Thêm row vào cache để UI hiển thị tức thì, khớp 4 cột bảng
-    final subjectRaw = (result['subject'] ?? '').toString();
-    final subjectSplit = subjectRaw.contains(' - ')
-        ? subjectRaw.split(' - ')
-        : [subjectRaw, subjectRaw];
-    final newRow = {
-      'id': DateTime.now().millisecondsSinceEpoch,
-      'student_code': result['student_code'],
-      'full_name': result['student_code'],
-      'class_name': '',
-      'subject_code': subjectSplit[0],                       // "IT001"
-      'subject_name': subjectSplit.length > 1 ? subjectSplit[1] : subjectRaw, // "Lập trình cơ bản"
-      'semester': result['semester'],
-      'cc_score': result['cc_score'],
-      'qkt_score': result['qkt_score'],
-      'ckt_score': result['ckt_score'],
-      'total_score': result['total_score'],
-      'grade': result['grade'],
-      'status': result['status'],
-      'note': result['note'] ?? '',
-    };
-    setState(() {
-      _rows = [newRow, ..._rows];
-    });
+
+    final studentsByCode = {for (final s in students) s['student_code'] as String: s};
+    final stu = studentsByCode[result['student_code']];
+    final semesterId = _semesterIdMap[result['semester']] ?? 0;
+    final subjectCode = (result['subject'] as String? ?? '').split(' - ').first;
+
+    await MockDataService.saveGrade(
+      studentId: (stu?['id'] ?? stu?['student_id'] ?? 0) as int,
+      semesterId: semesterId,
+      subjectCode: subjectCode,
+      ccScore: (result['cc_score'] as num?)?.toDouble() ?? 0,
+      qktScore: (result['qkt_score'] as num?)?.toDouble() ?? 0,
+      cktScore: (result['ckt_score'] as num?)?.toDouble() ?? 0,
+      note: result['note'] as String?,
+    );
+
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Đã thêm: ${result['student_code']} - Tổng ${(result['total_score'] as num).toStringAsFixed(2)} • ${result['grade']}',
+          'Đã lưu: ${result['student_code']} - Tổng ${(result['total_score'] as num).toStringAsFixed(2)} • ${result['grade']}',
         ),
         backgroundColor: const Color(0xFF10B981),
       ),
@@ -826,38 +961,35 @@ class _GradesScreenState extends State<GradesScreen> {
           child: _AddGradeDialog(
             classOptions: _classOptions,
             semesterOptions: _semesterOptions,
-            subjectOptions: _subjectOptions,
+            subjectOptions: _filteredSubjectOptions,
+            semesterIdMap: _semesterIdMap,
+            students: const [],
             initial: r,
           ),
         ),
       ),
     );
     if (result == null || !mounted) return;
-    // Cập nhật row trong cache _rows để UI refresh tức thì
-    final id = result['id'];
-    if (id != null) {
-      setState(() {
-        _rows = _rows.map((e) {
-          if ((e['id'] ?? '').toString() == id.toString()) {
-            return {
-              ...e,
-              'cc_score': result['cc_score'],
-              'qkt_score': result['qkt_score'],
-              'ckt_score': result['ckt_score'],
-              'total_score': result['total_score'],
-              'grade': result['grade'],
-              'status': result['status'],
-              'note': result['note'],
-            };
-          }
-          return e;
-        }).toList();
-      });
-    }
+
+    final studentId = r['student_id'] as int? ?? 0;
+    final semesterId = r['semester_id'] as int? ?? 0;
+    final subjectCode = r['subject_code'] as String? ?? '';
+
+    await MockDataService.saveGrade(
+      studentId: studentId,
+      semesterId: semesterId,
+      subjectCode: subjectCode,
+      ccScore: (result['cc_score'] as num?)?.toDouble() ?? 0,
+      qktScore: (result['qkt_score'] as num?)?.toDouble() ?? 0,
+      cktScore: (result['ckt_score'] as num?)?.toDouble() ?? 0,
+      note: result['note'] as String?,
+    );
+
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Đã cập nhật: ${result['student_code']} - Tổng ${(result['total_score'] as num).toStringAsFixed(2)} • ${result['grade']}',
+          'Đã cập nhật: ${r['student_code']} - Tổng ${(result['total_score'] as num).toStringAsFixed(2)} • ${result['grade']}',
         ),
         backgroundColor: const Color(0xFF10B981),
       ),
@@ -961,11 +1093,20 @@ class _GradesScreenState extends State<GradesScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Đã xóa (mock)')),
+              final studentId = r['student_id'] as int? ?? 0;
+              final semesterId = r['semester_id'] as int? ?? 0;
+              final subjectCode = r['subject_code'] as String? ?? '';
+              await MockDataService.deleteGrade(
+                studentId: studentId,
+                semesterId: semesterId,
+                subjectCode: subjectCode,
               );
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Đã xóa điểm'), backgroundColor: Color(0xFF10B981)),
+              );
+              await _loadData();
             },
             child: const Text('Xóa', style: TextStyle(color: Color(0xFFEF4444))),
           ),
@@ -1021,12 +1162,22 @@ class _AddGradeDialog extends StatefulWidget {
   final List<String> classOptions;
   final List<String> semesterOptions;
   final List<String> subjectOptions;
+  final Map<String, int> semesterIdMap;
+  final List<Map<String, dynamic>> students;
+  final String? initialClass;
+  final String? initialSemester;
+  final String? initialSubject;
   final Map<String, dynamic>? initial;
 
   const _AddGradeDialog({
     required this.classOptions,
     required this.semesterOptions,
     required this.subjectOptions,
+    required this.semesterIdMap,
+    required this.students,
+    this.initialClass,
+    this.initialSemester,
+    this.initialSubject,
     this.initial,
   });
 
@@ -1037,17 +1188,15 @@ class _AddGradeDialog extends StatefulWidget {
 class _AddGradeDialogState extends State<_AddGradeDialog> {
   final _studentCodeC = TextEditingController();
   final _noteC = TextEditingController();
-  // Bốn ô điểm tương ứng 4 cột trong bảng
   final _ccC = TextEditingController();
   final _qktC = TextEditingController();
   final _cktC = TextEditingController();
-  String? _selectedClass;
+  String? _selectedStudentCode;
   String? _selectedSubject;
   String? _selectedSemester;
 
   bool get _isEdit => widget.initial != null;
 
-  // Hằng số trọng số (theo đúng 4 cột bảng hiển thị)
   static const double _wCC = 0.10;
   static const double _wQK = 0.30;
   static const double _wCK = 0.60;
@@ -1055,43 +1204,36 @@ class _AddGradeDialogState extends State<_AddGradeDialog> {
   double? _cc;
   double? _qkt;
   double? _ckt;
-  double? _ckc; // cuối khóa check (?)
+  double? _total;
 
   @override
   void initState() {
     super.initState();
     final init = widget.initial;
+
     if (init != null) {
-      // Edit mode: prefill tất cả field theo đúng cột
       _studentCodeC.text = (init['student_code'] ?? '').toString();
       _noteC.text = (init['note'] ?? '').toString();
-      // Bốn cột điểm phải khớp bảng
       _ccC.text = _fmtIfNum(init['cc_score']);
       _qktC.text = _fmtIfNum(init['qkt_score']);
       _cktC.text = _fmtIfNum(init['ckt_score']);
-      // Nếu chỉ có 1 ô cũ 'final_score', map sang cuối kỳ
-      if (_cktC.text.isEmpty) {
-        _cktC.text = _fmtIfNum(init['final_score'] ?? init['score']);
-      }
       _recalc();
 
-      final sem = (init['semester'] ?? init['semester_name'] ?? '').toString();
+      final sem = (init['semester_name'] ?? init['semester'] ?? '').toString();
       if (widget.semesterOptions.contains(sem)) _selectedSemester = sem;
-      final subj = (init['subject_code'] ?? '').toString();
-      if (subj.isNotEmpty) {
-        final match = widget.subjectOptions.firstWhere(
-          (s) => s.startsWith('$subj - ') || s == subj,
-          orElse: () => widget.subjectOptions.isNotEmpty ? widget.subjectOptions.first : subj,
-        );
-        _selectedSubject = match;
-      }
-      final cls = (init['class_name'] ?? '').toString();
-      if (widget.classOptions.contains(cls)) _selectedClass = cls;
+      final subjRaw = (init['subject_code'] ?? '').toString();
+      final subjFull = init['subject_name'] ?? '';
+      final subjMatch = widget.subjectOptions.firstWhere(
+        (s) => s.startsWith('$subjRaw - '),
+        orElse: () => subjRaw.isNotEmpty ? '$subjRaw - $subjFull' : widget.subjectOptions.first,
+      );
+      if (widget.subjectOptions.contains(subjMatch)) _selectedSubject = subjMatch;
+      _selectedStudentCode = _studentCodeC.text;
+    } else {
+      _selectedSemester ??= widget.initialSemester;
+      _selectedSubject ??= widget.initialSubject;
     }
-    _selectedClass ??= widget.classOptions.isNotEmpty ? widget.classOptions.first : null;
-    _selectedSemester ??= widget.semesterOptions.isNotEmpty ? widget.semesterOptions.first : null;
-    _selectedSubject ??= widget.subjectOptions.isNotEmpty ? widget.subjectOptions.first : null;
-    // Lắng nghe thay đổi
+
     _ccC.addListener(_recalc);
     _qktC.addListener(_recalc);
     _cktC.addListener(_recalc);
@@ -1110,9 +1252,9 @@ class _AddGradeDialogState extends State<_AddGradeDialog> {
       _qkt = double.tryParse(_qktC.text.trim());
       _ckt = double.tryParse(_cktC.text.trim());
       if (_cc != null && _qkt != null && _ckt != null) {
-        _ckc = _cc! * _wCC + _qkt! * _wQK + _ckt! * _wCK;
+        _total = _cc! * _wCC + _qkt! * _wQK + _ckt! * _wCK;
       } else {
-        _ckc = null;
+        _total = null;
       }
     });
   }
@@ -1127,19 +1269,19 @@ class _AddGradeDialogState extends State<_AddGradeDialog> {
     super.dispose();
   }
 
-  Widget _label(String s) => Padding(
+  Widget _dlgLabel(String s) => Padding(
         padding: const EdgeInsets.only(bottom: 4, left: 2),
         child: Text(s, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF374151))),
       );
 
-  InputDecoration _dec(String hint) => InputDecoration(
+  InputDecoration _dlgDec(String hint) => InputDecoration(
         hintText: hint,
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
       );
 
-  Widget _scoreField(TextEditingController c, String label, String hint) {
+  Widget _dlgScoreField(TextEditingController c, String label, String hint) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1162,7 +1304,7 @@ class _AddGradeDialogState extends State<_AddGradeDialog> {
     );
   }
 
-  String _gradeOf(double v) {
+  String _dlgGradeOf(double v) {
     if (v >= 8.5) return 'A';
     if (v >= 7.0) return 'B';
     if (v >= 5.5) return 'C';
@@ -1170,7 +1312,7 @@ class _AddGradeDialogState extends State<_AddGradeDialog> {
     return 'F';
   }
 
-  Color _gradeColor(double v) {
+  Color _dlgGradeColor(double v) {
     if (v >= 8.5) return const Color(0xFF10B981);
     if (v >= 7.0) return const Color(0xFF3B82F6);
     if (v >= 5.5) return const Color(0xFFF59E0B);
@@ -1205,32 +1347,66 @@ class _AddGradeDialogState extends State<_AddGradeDialog> {
             ),
           ]),
           const SizedBox(height: 20),
-          _label('Mã sinh viên'),
-          TextField(
-            controller: _studentCodeC,
-            decoration: _dec('Nhập mã SV...'),
-          ),
+          _dlgLabel('Sinh viên'),
+          if (_isEdit)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Row(children: [
+                const Icon(Icons.person_rounded, size: 18, color: Color(0xFF6B7280)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${_studentCodeC.text} — ${widget.initial?['full_name'] ?? ''}',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ]),
+            )
+          else
+            DropdownButtonFormField<String>(
+              value: _selectedStudentCode,
+              isExpanded: true,
+              decoration: _dlgDec('Chọn sinh viên'),
+              items: widget.students.map((s) {
+                return DropdownMenuItem(
+                  value: s['student_code'] as String,
+                  child: Text(
+                    '${s['student_code']} — ${s['full_name']}',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                );
+              }).toList(),
+              onChanged: (v) {
+                setState(() => _selectedStudentCode = v);
+                _studentCodeC.text = v ?? '';
+              },
+            ),
           const SizedBox(height: 12),
-          _label('Môn học'),
+          _dlgLabel('Học kỳ'),
           DropdownButtonFormField<String>(
-            value: widget.subjectOptions.contains(_selectedSubject) ? _selectedSubject : null,
+            value: _selectedSemester,
             isExpanded: true,
-            decoration: _dec('Chọn môn'),
-            items: widget.subjectOptions
-                .map((s) => DropdownMenuItem(value: s, child: Text(s, overflow: TextOverflow.ellipsis)))
-                .toList(),
-            onChanged: (v) => setState(() => _selectedSubject = v),
-          ),
-          const SizedBox(height: 12),
-          _label('Học kỳ'),
-          DropdownButtonFormField<String>(
-            value: widget.semesterOptions.contains(_selectedSemester) ? _selectedSemester : null,
-            isExpanded: true,
-            decoration: _dec('Chọn học kỳ'),
+            decoration: _dlgDec('Chọn học kỳ'),
             items: widget.semesterOptions
                 .map((s) => DropdownMenuItem(value: s, child: Text(s, overflow: TextOverflow.ellipsis)))
                 .toList(),
-            onChanged: (v) => setState(() => _selectedSemester = v),
+            onChanged: _isEdit ? null : (v) => setState(() => _selectedSemester = v),
+          ),
+          const SizedBox(height: 12),
+          _dlgLabel('Môn học'),
+          DropdownButtonFormField<String>(
+            value: _selectedSubject,
+            isExpanded: true,
+            decoration: _dlgDec('Chọn môn'),
+            items: widget.subjectOptions
+                .map((s) => DropdownMenuItem(value: s, child: Text(s, overflow: TextOverflow.ellipsis)))
+                .toList(),
+            onChanged: _isEdit ? null : (v) => setState(() => _selectedSubject = v),
           ),
           const SizedBox(height: 12),
           // Bốn ô điểm phải khớp với 4 cột trong bảng hiển thị
@@ -1247,63 +1423,59 @@ class _AddGradeDialogState extends State<_AddGradeDialog> {
                 Row(children: [
                   const Icon(Icons.calculate_rounded, size: 16, color: Color(0xFF6366F1)),
                   const SizedBox(width: 6),
-                  const Text('Bảng điểm (khớp 4 cột)',
+                  const Text('Bảng điểm',
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF334155))),
                   const Spacer(),
-                  if (_ckc != null)
+                  if (_total != null)
                     Text(
-                      'Tổng: ${_ckc!.toStringAsFixed(2)} • ${_gradeOf(_ckc!)}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: _gradeColor(_ckc!),
-                      ),
+                      'Tổng: ${_total!.toStringAsFixed(2)} • ${_dlgGradeOf(_total!)}',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: _dlgGradeColor(_total!)),
                     ),
                 ]),
                 const SizedBox(height: 10),
                 Row(children: [
-                  Expanded(child: _scoreField(_ccC, 'CC (10%)', '8')),
+                  Expanded(child: _dlgScoreField(_ccC, 'CC (10%)', '8')),
                   const SizedBox(width: 8),
-                  Expanded(child: _scoreField(_qktC, 'QK (30%)', '7')),
+                  Expanded(child: _dlgScoreField(_qktC, 'QK (30%)', '7')),
                   const SizedBox(width: 8),
-                  Expanded(child: _scoreField(_cktC, 'CK (60%)', '8.5')),
+                  Expanded(child: _dlgScoreField(_cktC, 'CK (60%)', '8.5')),
                 ]),
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   decoration: BoxDecoration(
-                    color: _ckc != null
-                        ? _gradeColor(_ckc!).withValues(alpha: 0.08)
+                    color: _total != null
+                        ? _dlgGradeColor(_total!).withValues(alpha: 0.08)
                         : const Color(0xFFEEF2FF),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: _ckc != null
-                          ? _gradeColor(_ckc!).withValues(alpha: 0.3)
+                      color: _total != null
+                          ? _dlgGradeColor(_total!).withValues(alpha: 0.3)
                           : const Color(0xFFE0E7FF),
                     ),
                   ),
                   child: Row(children: [
                     Icon(Icons.functions_rounded,
                         size: 14,
-                        color: _ckc != null ? _gradeColor(_ckc!) : const Color(0xFF6366F1)),
+                        color: _total != null ? _dlgGradeColor(_total!) : const Color(0xFF6366F1)),
                     const SizedBox(width: 6),
                     const Text('Tổng kết',
                         style: TextStyle(fontSize: 11, color: Color(0xFF6B7280), fontWeight: FontWeight.w700)),
                     const Spacer(),
                     Text(
-                      _ckc == null ? '—' : _ckc!.toStringAsFixed(2),
+                      _total == null ? '—' : _total!.toStringAsFixed(2),
                       style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
                     ),
                     const SizedBox(width: 8),
-                    if (_ckc != null)
+                    if (_total != null)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: _gradeColor(_ckc!),
+                          color: _dlgGradeColor(_total!),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
-                          _gradeOf(_ckc!),
+                          _dlgGradeOf(_total!),
                           style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900),
                         ),
                       ),
@@ -1313,11 +1485,11 @@ class _AddGradeDialogState extends State<_AddGradeDialog> {
             ),
           ),
           const SizedBox(height: 12),
-          _label('Ghi chú'),
+          _dlgLabel('Ghi chú'),
           TextField(
             controller: _noteC,
             maxLines: 2,
-            decoration: _dec('Ghi chú tuỳ chọn...'),
+            decoration: _dlgDec('Ghi chú tuỳ chọn...'),
           ),
           const SizedBox(height: 20),
           Row(children: [
@@ -1332,75 +1504,13 @@ class _AddGradeDialogState extends State<_AddGradeDialog> {
             Expanded(
               flex: 2,
               child: ElevatedButton.icon(
-                onPressed: () {
-                  final code = _studentCodeC.text.trim();
-                  if (code.isEmpty || _selectedSubject == null || _selectedSemester == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Vui lòng nhập Mã SV, chọn môn và học kỳ'),
-                        backgroundColor: Color(0xFFEF4444),
-                      ),
-                    );
-                    return;
-                  }
-                  if (_ccC.text.isEmpty && _qktC.text.isEmpty && _cktC.text.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Vui lòng nhập ít nhất 1 cột điểm (CC / QK / CK)'),
-                        backgroundColor: Color(0xFFEF4444),
-                      ),
-                    );
-                    return;
-                  }
-                  final cc = double.tryParse(_ccC.text.trim());
-                  final qk = double.tryParse(_qktC.text.trim());
-                  final ck = double.tryParse(_cktC.text.trim());
-                  for (final pair in [
-                    ('CC', cc),
-                    ('QK', qk),
-                    ('CK', ck),
-                  ]) {
-                    final v = pair.$2;
-                    if (v != null && (v < 0 || v > 10)) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Điểm ${pair.$1} phải nằm trong khoảng 0 - 10'),
-                          backgroundColor: const Color(0xFFEF4444),
-                        ),
-                      );
-                      return;
-                    }
-                  }
-                  if (_ckc == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Vui lòng nhập đủ 3 cột điểm để tính Tổng kết'),
-                        backgroundColor: Color(0xFFEF4444),
-                      ),
-                    );
-                    return;
-                  }
-                  Navigator.pop(context, {
-                    'id': _isEdit ? widget.initial!['id'] : null,
-                    'student_code': code,
-                    'subject': _selectedSubject,
-                    'semester': _selectedSemester,
-                    'cc_score': cc,
-                    'qkt_score': qk,
-                    'ckt_score': ck,
-                    'total_score': _ckc,
-                    'grade': _gradeOf(_ckc!),
-                    'status': _ckc! >= 4.0 ? 'pass' : 'fail',
-                    'note': _noteC.text.trim(),
-                  });
-                },
+                onPressed: _onSubmit,
                 icon: Icon(_isEdit ? Icons.save_rounded : Icons.add_rounded, size: 18),
                 label: Text(_isEdit ? 'Lưu thay đổi' : 'Thêm điểm'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _isEdit ? const Color(0xFF6366F1) : const Color(0xFFF59E0B),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  elevation: 0,
                 ),
               ),
             ),
@@ -1408,5 +1518,70 @@ class _AddGradeDialogState extends State<_AddGradeDialog> {
         ],
       ),
     );
+  }
+
+  void _onSubmit() {
+    final code = _studentCodeC.text.trim();
+
+    if (_isEdit) {
+      if (_ccC.text.isEmpty && _qktC.text.isEmpty && _cktC.text.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Vui lòng nhập ít nhất 1 cột điểm'),
+            backgroundColor: Color(0xFFEF4444),
+          ),
+        );
+        return;
+      }
+    } else {
+      if (code.isEmpty || _selectedSemester == null || _selectedSubject == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Vui lòng chọn đầy đủ Sinh viên, Học kỳ và Môn học'),
+            backgroundColor: Color(0xFFEF4444),
+          ),
+        );
+        return;
+      }
+      if (_ccC.text.isEmpty && _qktC.text.isEmpty && _cktC.text.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Vui lòng nhập ít nhất 1 cột điểm (CC / QK / CK)'),
+            backgroundColor: Color(0xFFEF4444),
+          ),
+        );
+        return;
+      }
+    }
+
+    final cc = double.tryParse(_ccC.text.trim());
+    final qk = double.tryParse(_qktC.text.trim());
+    final ck = double.tryParse(_cktC.text.trim());
+
+    for (final pair in [('CC', cc), ('QK', qk), ('CK', ck)]) {
+      final v = pair.$2;
+      if (v != null && (v < 0 || v > 10)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Điểm ${pair.$1} phải nằm trong khoảng 0 - 10'),
+            backgroundColor: const Color(0xFFEF4444),
+          ),
+        );
+        return;
+      }
+    }
+
+    Navigator.pop(context, {
+      'student_code': code,
+      'subject': _selectedSubject,
+      'semester': _selectedSemester,
+      'cc_score': cc,
+      'qkt_score': qk,
+      'ckt_score': ck,
+      'total_score': _total,
+      'grade': _total != null ? _dlgGradeOf(_total!) : null,
+      'status': _total != null ? (_total! >= 4.0 ? 'pass' : 'fail') : null,
+      'note': _noteC.text.trim(),
+    });
   }
 }

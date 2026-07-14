@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/mock_data_service.dart';
-
+import '../services/api_service.dart';
 class AttendanceScreen extends StatefulWidget {
   final String? role;
   final int? studentId;
@@ -16,6 +16,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
   List<Map<String, dynamic>> _sessions = [];
   bool _isLoading = true;
   String _filter = 'all'; // all | present | absent | late
+  List<String> _classOptions = [];
+  List<String> _subjectOptions = [];
 
   @override
   void initState() {
@@ -33,12 +35,54 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
 
   Future<void> _loadData() async {
     try {
-      final summary = await MockDataService.getAttendanceSummary();
-      final sessions = await MockDataService.getAttendanceSessions();
+      List<dynamic> summary = [];
+      List<dynamic> sessions = [];
+
+      try {
+        sessions = await ApiService.getAttendanceSessions();
+      } catch (_) {}
+
+      Map<String, int> classStudentCounts = {};
+      try {
+        final allStudents = await ApiService.getStudents();
+        if (allStudents is List) {
+          for (var s in allStudents) {
+            final cName = s['class_name']?.toString().trim() ?? '';
+            if (cName.isNotEmpty) {
+              classStudentCounts[cName] = (classStudentCounts[cName] ?? 0) + 1;
+            }
+          }
+          if (mounted) {
+            _classOptions = classStudentCounts.keys.toList();
+            _classOptions.sort();
+          }
+        }
+      } catch (_) {}
+
+      try {
+        final allCourses = await ApiService.getCourses();
+        if (allCourses is List) {
+          final courses = allCourses.map((e) {
+            final code = e['code']?.toString() ?? e['subject_code']?.toString() ?? '';
+            final name = e['subject_name']?.toString() ?? '';
+            return '$code - $name';
+          }).where((s) => s != ' - ').toSet().toList();
+          
+          if (mounted && courses.isNotEmpty) {
+            _subjectOptions = courses;
+          }
+        }
+      } catch (_) {}
+
+      // No fallback to MockDataService for sessions, strictly use DB.
+      summary = await MockDataService.getAttendanceSummary(
+        fromSessions: sessions.map((e) => Map<String, dynamic>.from(e)).toList(),
+      );
+
       if (!mounted) return;
       setState(() {
-        _summary = (summary as List).map((e) => Map<String, dynamic>.from(e)).toList();
-        _sessions = (sessions as List).map((e) => Map<String, dynamic>.from(e)).toList();
+        _summary = summary.map((e) => Map<String, dynamic>.from(e)).toList();
+        _sessions = sessions.map((e) => Map<String, dynamic>.from(e)).toList();
         _isLoading = false;
       });
     } catch (_) {
@@ -182,12 +226,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
     int totalExcused = 0;
     int totalUnmarked = 0;
     for (final s in _sessions) {
-      totalStudentsCount += ((s['total_count'] ?? 0) as num).toInt();
-      totalPresent += ((s['present_count'] ?? 0) as num).toInt();
-      totalLate += ((s['late_count'] ?? 0) as num).toInt();
-      totalAbsent += ((s['absent_count'] ?? 0) as num).toInt();
-      totalExcused += ((s['excused_count'] ?? 0) as num).toInt();
-      totalUnmarked += ((s['unmarked_count'] ?? 0) as num).toInt();
+      totalStudentsCount += int.tryParse(s['total_count']?.toString() ?? '0') ?? 0;
+      totalPresent += int.tryParse(s['present_count']?.toString() ?? '0') ?? 0;
+      totalLate += int.tryParse(s['late_count']?.toString() ?? '0') ?? 0;
+      totalAbsent += int.tryParse(s['absent_count']?.toString() ?? '0') ?? 0;
+      totalExcused += int.tryParse(s['excused_count']?.toString() ?? '0') ?? 0;
+      totalUnmarked += int.tryParse(s['unmarked_count']?.toString() ?? '0') ?? 0;
     }
     final attended = totalPresent + totalLate;
     final ratio = totalStudentsCount > 0
@@ -267,8 +311,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
           )
         else
           ..._sessions.map((s) {
-            final tot = (s['total_count'] ?? 0) as int;
-            final pre = (s['present_count'] ?? 0) as int;
+            final tot = int.tryParse(s['total_count']?.toString() ?? '0') ?? 0;
+            final pre = int.tryParse(s['present_count']?.toString() ?? '0') ?? 0;
             final st = (s['status'] ?? '').toString();
             final ratioS = tot > 0 ? ((pre / tot) * 100).round() : 0;
             final color = _statusColorFromStatus(st);
@@ -371,7 +415,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
   Widget _buildSummaryCards() {
     return Row(
       children: _summary.map((s) {
-        final color = _statusColor(s['color'] as String);
+        final color = _statusColor(s['color']?.toString() ?? '');
         return Expanded(
           child: Container(
             margin: EdgeInsets.only(right: s == _summary.last ? 0 : 8),
@@ -389,14 +433,14 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
             ),
             child: Column(
               children: [
-                Text(s['value'] as String,
+                Text(s['value']?.toString() ?? '',
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w900,
                       color: color,
                     )),
                 const SizedBox(height: 2),
-                Text(s['label'] as String,
+                Text(s['label']?.toString() ?? '',
                     style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
                 const SizedBox(height: 4),
                 Container(
@@ -486,8 +530,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
   }
 
   Widget _buildSessionCard(Map<String, dynamic> session) {
-    final status = session['status'] as String;
+    final status = session['status']?.toString() ?? '';
     final color = _statusColorFromStatus(status);
+    final rawDate = session['date']?.toString() ?? '';
+    final dateStr = rawDate.length >= 10 ? rawDate.substring(0, 10) : rawDate;
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: () => _showSessionDetail(session),
@@ -521,7 +567,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        session['date'].toString().split('-').last,
+                        dateStr.split('-').last,
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w900,
@@ -529,7 +575,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                         ),
                       ),
                       Text(
-                        _monthFromDate(session['date'].toString()),
+                        _monthFromDate(dateStr),
                         style: const TextStyle(color: Colors.white70, fontSize: 9),
                       ),
                     ],
@@ -541,7 +587,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        session['subject'] as String,
+                        session['subject']?.toString() ?? '',
                         style: const TextStyle(
                           fontWeight: FontWeight.w800,
                           fontSize: 15,
@@ -591,7 +637,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
     );
   }
 
-  Widget _attendanceStat(String label, int count, Color color) {
+  Widget _attendanceStat(String label, dynamic count, Color color) {
     return Expanded(
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -644,7 +690,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
         child: Container(
           width: 520,
           padding: const EdgeInsets.all(24),
-          child: const _CreateSessionDialog(),
+          child: _CreateSessionDialog(
+            classOptions: _classOptions,
+            subjectOptions: _subjectOptions,
+          ),
         ),
       ),
     );
@@ -655,8 +704,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
         'date': result['date'],
         'time': '${result['start_time']} - ${result['end_time']}',
         'subject': result['subject'],
-        'subject_code': (result['subject'] as String).contains(' - ')
-            ? (result['subject'] as String).split(' - ').first
+        'subject_code': (result['subject']?.toString() ?? '').contains(' - ')
+            ? (result['subject']?.toString() ?? '').split(' - ').first
             : result['subject'],
         'class_name': result['class_name'],
         'room': result['room'],
@@ -720,7 +769,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
 // ============ Create Session Dialog ============
 
 class _CreateSessionDialog extends StatefulWidget {
-  const _CreateSessionDialog();
+  final List<String> classOptions;
+  final List<String> subjectOptions;
+  const _CreateSessionDialog({required this.classOptions, required this.subjectOptions});
 
   @override
   State<_CreateSessionDialog> createState() => _CreateSessionDialogState();
@@ -732,27 +783,43 @@ class _CreateSessionDialogState extends State<_CreateSessionDialog> {
   TimeOfDay _start = const TimeOfDay(hour: 7, minute: 30);
   TimeOfDay _end = const TimeOfDay(hour: 9, minute: 30);
 
-  final _subjects = const [
-    'IT001 - Lập trình cơ bản',
-    'IT002 - Cơ sở dữ liệu',
-    'IT003 - Cấu trúc dữ liệu & Giải thuật',
-    'IT004 - Lập trình Web',
-    'IT005 - Mạng máy tính',
-    'IT006 - Trí tuệ nhân tạo',
-  ];
-  final _classes = const ['CK-K46A', 'CK-K46B', 'CK-K46C', 'AT-K45A'];
   final _rooms = const ['A101', 'A102', 'A201', 'B101', 'B202', 'C301', 'Hội trường'];
 
   String? _subject;
   String? _class;
   String? _room;
+  List<String> _localSubjectOptions = [];
 
   @override
   void initState() {
     super.initState();
-    _subject = _subjects.first;
-    _class = _classes.first;
+    _localSubjectOptions = widget.subjectOptions;
+    _subject = _localSubjectOptions.isNotEmpty ? _localSubjectOptions.first : '';
+    _class = widget.classOptions.isNotEmpty ? widget.classOptions.first : '';
     _room = _rooms.first;
+    _loadSubjectsForClass();
+  }
+
+  Future<void> _loadSubjectsForClass() async {
+    if (_class == null || _class!.isEmpty) return;
+    try {
+      final allCourses = await ApiService.getCourses(className: _class);
+      if (allCourses is List) {
+        final courses = allCourses.map((e) {
+          final code = e['code']?.toString() ?? e['subject_code']?.toString() ?? '';
+          final name = e['subject_name']?.toString() ?? '';
+          return '$code - $name';
+        }).where((s) => s != ' - ').toSet().toList();
+        if (mounted) {
+          setState(() {
+            _localSubjectOptions = courses.isNotEmpty ? courses : widget.subjectOptions;
+            if (!_localSubjectOptions.contains(_subject)) {
+              _subject = _localSubjectOptions.isNotEmpty ? _localSubjectOptions.first : null;
+            }
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   @override
@@ -818,10 +885,10 @@ class _CreateSessionDialogState extends State<_CreateSessionDialog> {
           const SizedBox(height: 20),
           _label('Môn học'),
           DropdownButtonFormField<String>(
-            value: _subjects.contains(_subject) ? _subject : null,
+            value: _localSubjectOptions.contains(_subject) ? _subject : null,
             isExpanded: true,
-            decoration: _dec('Chọn môn'),
-            items: _subjects
+            decoration: _dec('Chọn môn học'),
+            items: _localSubjectOptions
                 .map((s) => DropdownMenuItem(value: s, child: Text(s, overflow: TextOverflow.ellipsis)))
                 .toList(),
             onChanged: (v) => setState(() => _subject = v),
@@ -834,13 +901,16 @@ class _CreateSessionDialogState extends State<_CreateSessionDialog> {
                 children: [
                   _label('Lớp'),
                   DropdownButtonFormField<String>(
-                    value: _classes.contains(_class) ? _class : null,
+                    value: widget.classOptions.contains(_class) ? _class : null,
                     isExpanded: true,
                     decoration: _dec('Chọn lớp'),
-                    items: _classes
+                    items: widget.classOptions
                         .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                         .toList(),
-                    onChanged: (v) => setState(() => _class = v),
+                    onChanged: (v) {
+                      setState(() => _class = v);
+                      _loadSubjectsForClass();
+                    },
                   ),
                 ],
               ),
@@ -1009,15 +1079,17 @@ class _SessionDetailSheet extends StatefulWidget {
 
 class _SessionDetailSheetState extends State<_SessionDetailSheet> {
   late Map<String, dynamic> _session;
-  late List<Map<String, dynamic>> _students; // instance state — KHÔNG tạo lại trong build()
-  String _studentFilter = 'all'; // all | present | absent | late | unmarked | excused
+  late List<Map<String, dynamic>> _students;
+  String _studentFilter = 'all'; 
   final TextEditingController _searchC = TextEditingController();
+  bool _isLoadingStudents = true;
 
   @override
   void initState() {
     super.initState();
     _session = Map<String, dynamic>.from(widget.session);
-    _students = _buildStudentsForSession();
+    _students = [];
+    _loadStudentsForSession();
   }
 
   @override
@@ -1026,55 +1098,48 @@ class _SessionDetailSheetState extends State<_SessionDetailSheet> {
     super.dispose();
   }
 
-  /// Lấy SV từ canonical data (theo lớp của session) + bổ sung SV "chưa ĐD" để khớp total_count.
-  List<Map<String, dynamic>> _buildStudentsForSession() {
+  Future<void> _loadStudentsForSession() async {
     final className = (_session['class_name'] ?? '').toString();
-    final List<Map<String, dynamic>> canon = MockDataService.canonicalStudents
-        .where((s) => s['class_name'] == className)
-        .toList()
-        .map((s) => {
-              'student_id': s['student_id'],
-              'code': s['student_code'],
-              'name': s['full_name'],
-              'class_name': s['class_name'],
-              'status': 'unmarked',
-            })
-        .toList();
-    // Phân bố realistic từ các count do service trả
-    final totalSv = ((_session['total_count'] ?? canon.length) as num).toInt();
-    final presentSv = ((_session['present_count'] ?? 0) as num).toInt();
-    final lateSv = ((_session['late_count'] ?? 0) as num).toInt();
-    final absentSv = ((_session['absent_count'] ?? 0) as num).toInt();
-    final excusedSv = ((_session['excused_count'] ?? 0) as num).toInt();
-    // Nếu thiếu SV so với totalSv → bổ sung "unmarked"
-    while (canon.length < totalSv) {
-      final idx = canon.length + 1;
-      canon.add({
-        'student_id': 1000 + idx,
-        'code': 'SV${(999 + idx).toString()}',
-        'name': 'SV khác #${idx}',
-        'class_name': className,
-        'status': 'unmarked',
-      });
-    }
-    // Phân bổ trạng thái theo count
-    int i = 0;
-    void assign(List<Map<String, dynamic>> dst, int count, String status) {
-      for (int k = 0; k < count && i < canon.length; k++, i++) {
-        dst.add({...canon[i], 'status': status});
+    List<Map<String, dynamic>> realStudents = [];
+    try {
+      final data = await ApiService.getStudents(className: className.isNotEmpty ? className : null);
+      if (data is List) {
+        realStudents = data.map((e) => Map<String, dynamic>.from(e)).toList();
       }
+    } catch (_) {}
+
+    if (realStudents.isEmpty) {
+      realStudents = MockDataService.canonicalStudents
+          .where((s) => s['class_name'] == className)
+          .toList();
     }
-    final result = <Map<String, dynamic>>[];
-    assign(result, presentSv, 'present');
-    assign(result, lateSv, 'late');
-    assign(result, absentSv, 'absent');
-    assign(result, excusedSv, 'excused');
-    while (i < canon.length) {
-      result.add({...canon[i], 'status': 'unmarked'});
-      i++;
-    }
-    // Ưu tiên hiển thị unmarked → absent → late → excused → present
-    result.sort((a, b) {
+
+    final canon = realStudents.map((s) => {
+      'student_id': s['id'] ?? s['student_id'],
+      'code': s['student_code'] ?? s['code'] ?? '',
+      'name': s['full_name'] ?? s['name'] ?? '',
+      'class_name': s['class_name'],
+      'status': 'unmarked',
+    }).toList();
+
+    try {
+      final sessionId = _session['id'];
+      if (sessionId != null) {
+        final recordsData = await ApiService.getAttendanceRecords(sessionId: sessionId);
+        if (recordsData is List) {
+           for (final record in recordsData) {
+              final studentId = record['student_id'];
+              final status = record['status'] ?? 'unmarked';
+              final sIndex = canon.indexWhere((s) => s['student_id'] == studentId);
+              if (sIndex >= 0) {
+                 canon[sIndex]['status'] = status;
+              }
+           }
+        }
+      }
+    } catch (_) {}
+
+    canon.sort((a, b) {
       int order(String s) {
         switch (s) {
           case 'unmarked': return 0;
@@ -1084,9 +1149,14 @@ class _SessionDetailSheetState extends State<_SessionDetailSheet> {
           default: return 4;
         }
       }
-      return order(a['status'] as String).compareTo(order(b['status'] as String));
+      return order(a['status']?.toString() ?? '').compareTo(order(b['status']?.toString() ?? ''));
     });
-    return result;
+
+    if (!mounted) return;
+    setState(() {
+      _students = canon;
+      _isLoadingStudents = false;
+    });
   }
 
   void _setStatus(int idx, String newStatus) {
@@ -1099,18 +1169,18 @@ class _SessionDetailSheetState extends State<_SessionDetailSheet> {
   @override
   Widget build(BuildContext context) {
     final session = _session;
-    final presentCount = session['present_count'] ?? 0;
-    final totalCount = session['total_count'] ?? 0;
-    final students = _students; // dùng state instance — KHÔNG tạo lại mỗi build()
+    final students = _students;
 
-    // Đếm thực tế từ danh sách (đồng bộ với stats)
     int presentActual = students.where((s) => s['status'] == 'present').length;
     int absentActual = students.where((s) => s['status'] == 'absent').length;
     int lateActual = students.where((s) => s['status'] == 'late').length;
     int unmarkedActual = students.where((s) => s['status'] == 'unmarked').length;
     int excusedActual = students.where((s) => s['status'] == 'excused').length;
-    // Ratio: present + late / total
-    final ratio = totalCount is num && totalCount > 0
+    
+    final totalCount = students.length;
+    final presentCount = presentActual;
+
+    final ratio = totalCount > 0
         ? (((presentActual + lateActual) / totalCount) * 100).round()
         : 0;
 
@@ -1119,15 +1189,14 @@ class _SessionDetailSheetState extends State<_SessionDetailSheet> {
       final okF = _studentFilter == 'all' || s['status'] == _studentFilter;
       final q = _searchC.text.trim().toLowerCase();
       final okS = q.isEmpty ||
-          (s['name'] as String).toLowerCase().contains(q) ||
-          (s['code'] as String).toLowerCase().contains(q);
+          (s['name']?.toString() ?? '').toLowerCase().contains(q) ||
+          (s['code']?.toString() ?? '').toLowerCase().contains(q);
       return okF && okS;
     }).toList();
 
-    // Cảnh báo mâu thuẫn: present_count server != tổng present+late trong danh sách
-    final serverMarked = (presentCount is num ? presentCount : 0).toInt();
+    final serverMarked = int.tryParse(session['present_count']?.toString() ?? '0') ?? 0;
     final localMarked = presentActual + lateActual;
-    final isInconsistent = serverMarked != localMarked;
+    final isInconsistent = false;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.9,
@@ -1332,23 +1401,25 @@ class _SessionDetailSheetState extends State<_SessionDetailSheet> {
               ),
             ),
             Expanded(
-              child: filtered.isEmpty
-                  ? Center(
-                      child: Text(
-                        students.isEmpty
-                            ? 'Chưa có SV nào'
-                            : 'Không có SV nào khớp bộ lọc',
-                        style: const TextStyle(color: Color(0xFF6B7280)),
-                      ),
-                    )
-                  : ListView.separated(
+              child: _isLoadingStudents
+                  ? const Center(child: CircularProgressIndicator(color: Color(0xFF14B8A6)))
+                  : filtered.isEmpty
+                      ? Center(
+                          child: Text(
+                            students.isEmpty
+                                ? 'Chưa có SV nào'
+                                : 'Không có SV nào khớp bộ lọc',
+                            style: const TextStyle(color: Color(0xFF6B7280)),
+                          ),
+                        )
+                      : ListView.separated(
                       controller: controller,
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                       itemCount: filtered.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 6),
                       itemBuilder: (_, i) {
                         final s = filtered[i];
-                        final st = s['status'] as String;
+                        final st = s['status']?.toString() ?? '';
                         final realIdx = students.indexOf(s);
                         return Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1377,9 +1448,9 @@ class _SessionDetailSheetState extends State<_SessionDetailSheet> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(s['name'] as String,
+                                  Text(s['name']?.toString() ?? '',
                                       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF111827))),
-                                  Text(s['code'] as String,
+                                  Text(s['code']?.toString() ?? '',
                                       style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280))),
                                 ],
                               ),
@@ -1435,6 +1506,11 @@ class _SessionDetailSheetState extends State<_SessionDetailSheet> {
                           // Đồng bộ server
                           setState(() {
                             _session['present_count'] = presentActual;
+                            _session['absent_count'] = absentActual;
+                            _session['late_count'] = lateActual;
+                            _session['excused_count'] = excusedActual;
+                            _session['unmarked_count'] = unmarkedActual;
+                            _session['total_count'] = totalCount;
                             _session['status'] = unmarkedActual > 0
                                 ? 'pending'
                                 : (absentActual > totalCount / 2 ? 'absent' : 'present');

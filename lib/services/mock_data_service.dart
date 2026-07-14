@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'api_service.dart';
 
 /// Service cung cấp dữ liệu mẫu cho các màn hình khi backend chưa sẵn sàng
 /// hoặc khi cần demo UI. Mọi method trả về `Future` với delay giả lập.
@@ -19,14 +20,28 @@ class MockDataService {
 
   // ============ CANONICAL DATA SOURCES (dùng chung) ============
 
-  /// 6 môn CNTT — là nguồn duy nhất cho mọi dropdown/getter liên quan môn học.
+  /// 12 môn theo ngành — IT* CNTT, IS* ATTT, SE* KTPM.
   static const List<Map<String, dynamic>> canonicalSubjects = [
+    // CNTT
     {'subject_code': 'IT001', 'subject_name': 'Lập trình cơ bản', 'credits': 3, 'exam_form': 'Lý thuyết'},
     {'subject_code': 'IT002', 'subject_name': 'Cơ sở dữ liệu', 'credits': 3, 'exam_form': 'Lý thuyết'},
     {'subject_code': 'IT003', 'subject_name': 'Cấu trúc dữ liệu & Giải thuật', 'credits': 4, 'exam_form': 'Lý thuyết'},
     {'subject_code': 'IT004', 'subject_name': 'Lập trình Web', 'credits': 3, 'exam_form': 'Thực hành + Lý thuyết'},
     {'subject_code': 'IT005', 'subject_name': 'Mạng máy tính', 'credits': 3, 'exam_form': 'Lý thuyết'},
     {'subject_code': 'IT006', 'subject_name': 'Trí tuệ nhân tạo', 'credits': 3, 'exam_form': 'Đồ án'},
+    // ATTT
+    {'subject_code': 'IS002', 'subject_name': 'Mật mã ứng dụng', 'credits': 3, 'exam_form': 'Lý thuyết'},
+    {'subject_code': 'IS003', 'subject_name': 'An toàn mạng', 'credits': 3, 'exam_form': 'Thực hành + Lý thuyết'},
+    {'subject_code': 'IS004', 'subject_name': 'Bảo mật hệ thống thông tin', 'credits': 3, 'exam_form': 'Lý thuyết'},
+    {'subject_code': 'IS005', 'subject_name': 'Phân tích mã độc', 'credits': 3, 'exam_form': 'Thực hành'},
+    {'subject_code': 'IS006', 'subject_name': 'Kiểm thử xâm nhập', 'credits': 3, 'exam_form': 'Thực hành'},
+    // KTPM
+    {'subject_code': 'SE001', 'subject_name': 'Phân tích yêu cầu phần mềm', 'credits': 3, 'exam_form': 'Lý thuyết'},
+    {'subject_code': 'SE002', 'subject_name': 'Thiết kế phần mềm', 'credits': 3, 'exam_form': 'Lý thuyết'},
+    {'subject_code': 'SE003', 'subject_name': 'Kiến trúc phần mềm', 'credits': 3, 'exam_form': 'Lý thuyết'},
+    {'subject_code': 'SE004', 'subject_name': 'Kiểm thử phần mềm', 'credits': 3, 'exam_form': 'Thực hành + Lý thuyết'},
+    {'subject_code': 'SE005', 'subject_name': 'DevOps & CI/CD', 'credits': 3, 'exam_form': 'Thực hành'},
+    {'subject_code': 'SE006', 'subject_name': 'Công nghệ phần mềm nâng cao', 'credits': 3, 'exam_form': 'Đồ án'},
   ];
 
   /// 3 học kỳ gần nhất — format thống nhất.
@@ -159,11 +174,11 @@ class MockDataService {
     final sessions = fromSessions ?? await getAttendanceSessions(className: className, studentId: studentId);
     int present = 0, absent = 0, late = 0, excused = 0, totalSessions = 0;
     for (final s in sessions) {
-      present += ((s['present_count'] ?? 0) as num).toInt();
-      absent += ((s['absent_count'] ?? 0) as num).toInt();
-      late += ((s['late_count'] ?? 0) as num).toInt();
-      excused += ((s['excused_count'] ?? 0) as num).toInt();
-      totalSessions += ((s['total_count'] ?? 0) as num).toInt();
+      present += int.tryParse(s['present_count']?.toString() ?? '0') ?? 0;
+      absent += int.tryParse(s['absent_count']?.toString() ?? '0') ?? 0;
+      late += int.tryParse(s['late_count']?.toString() ?? '0') ?? 0;
+      excused += int.tryParse(s['excused_count']?.toString() ?? '0') ?? 0;
+      totalSessions += int.tryParse(s['total_count']?.toString() ?? '0') ?? 0;
     }
     final denom = totalSessions == 0 ? 1 : totalSessions;
     String pct(int v) => (v / denom * 100).round().toString();
@@ -350,8 +365,8 @@ class MockDataService {
     final invoices = fromInvoices ?? await getTuitionInvoices(studentId: studentId);
     int total = 0, paid = 0, unpaid = 0, overdue = 0;
     for (final inv in invoices) {
-      total += ((inv['total_amount'] ?? 0) as num).toInt();
-      paid += ((inv['paid_amount'] ?? 0) as num).toInt();
+      total += int.tryParse(inv['total_amount']?.toString() ?? '0') ?? 0;
+      paid += int.tryParse(inv['paid_amount']?.toString() ?? '0') ?? 0;
       if ((inv['status'] ?? '') == 'unpaid') unpaid++;
       // overdue nếu due_date < now và chưa paid hết
       try {
@@ -381,7 +396,7 @@ class MockDataService {
     int payId = 3000;
     for (final inv in invoices.take(3)) {
       // mỗi invoice có 1-2 payment
-      final total = ((inv['paid_amount'] ?? 0) as num).toInt();
+      final total = int.tryParse(inv['paid_amount']?.toString() ?? '0') ?? 0;
       final splits = _rand.nextBool() ? 1 : 2;
       final per = (total / splits).round();
       for (int s = 0; s < splits; s++) {
@@ -404,65 +419,282 @@ class MockDataService {
   }
 
   // ============ GRADE BOOK - Bảng điểm admin ============
+  // ============ GRADES DISPLAY (Student xem điểm chỉ đọc) ============
 
+  /// Chương trình khung thực tế: lớp → học kỳ → danh sách môn.
+  /// Nguồn duy nhất cho cả curriculum display lẫn grades.
+  /// Muốn thêm môn vào kỳ nào → sửa ở đây.
+  static const Map<String, Map<int, List<String>>> _curriculumLayout = {
+    'CNTT01': {
+      1: ['IT001', 'IT003'],
+      2: ['IT002', 'IT004'],
+      3: ['IT005', 'IT006'],
+    },
+    'CNTT02': {
+      1: ['IT001', 'IT003'],
+      2: ['IT002', 'IT004'],
+      3: ['IT005', 'IT006'],
+    },
+    'ATTT01': {
+      1: ['IT001', 'IS002'],
+      2: ['IS003', 'IS004'],
+      3: ['IS005', 'IS006'],
+    },
+    'KTPM01': {
+      1: ['SE001', 'SE002'],
+      2: ['SE003', 'SE004'],
+      3: ['SE005', 'SE006'],
+    },
+  };
+
+  /// Lấy danh sách subject_code cho 1 lớp + 1 học kỳ từ chương trình khung.
+  static List<String> _getCurriculumSubjectCodes(String className, int semesterId) {
+    final classMap = _curriculumLayout[className] ?? _curriculumLayout['CNTT01']!;
+    return classMap[semesterId] ?? [];
+  }
+
+  /// Lấy danh sách môn học cho 1 học kỳ + lớp (từ chương trình khung thực tế).
+  /// Dùng chung cho cả curriculum display lẫn grades.
+  static List<Map<String, dynamic>> _getSubjectsForSemester(int semesterId, String? className) {
+    final c = (className ?? '').trim().isEmpty ? 'CNTT01' : className!.trim();
+    final sem = canonicalSemesters.firstWhere(
+      (s) => s['id'] == semesterId,
+      orElse: () => const {},
+    );
+    if (sem.isEmpty) return [];
+
+    final codes = _getCurriculumSubjectCodes(c, semesterId);
+    return codes.map((code) {
+      return canonicalSubjects.firstWhere(
+        (s) => s['subject_code'] == code,
+        orElse: () => const {},
+      );
+    }).where((s) => s.isNotEmpty).toList().asMap().entries.map((e) {
+      final i = e.key;
+      final s = e.value;
+      return {
+        'id': 100 + semesterId * 10 + i,
+        'code': s['subject_code'],
+        'subject_code': s['subject_code'],
+        'name': s['subject_name'],
+        'subject_name': s['subject_name'],
+        'credits': s['credits'],
+        'credit': s['credits'],
+        'theory_hours': 30,
+        'practice_hours': 15,
+        'course_type': 'Bắt buộc',
+        'exam_form': s['exam_form'] ?? 'Tự luận',
+        'status': 'studying',
+        'semester_id': semesterId,
+        'semester_name': sem['semester_name'],
+        'class_name': c,
+      };
+    }).toList();
+  }
+
+  /// Trả về subject options cho dropdown "Môn học" trong grades filter.
+  /// Nếu className và semesterId đều null → tất cả môn.
+  /// Nếu chỉ có className → môn theo lớp (mọi HK).
+  /// Nếu có cả className + semesterId → môn theo lớp + HK cụ thể.
+  static Future<List<String>> getGradeBookFilteredSubjects({
+    String? className,
+    int? semesterId,
+  }) async {
+    try {
+      final allCourses = await ApiService.getCourses(className: className, semesterId: semesterId);
+      if (allCourses is List) {
+        return allCourses.map((e) {
+          final code = e['code']?.toString() ?? e['subject_code']?.toString() ?? '';
+          final name = e['subject_name']?.toString() ?? '';
+          return '$code - $name';
+        }).where((s) => s != ' - ').toSet().toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  /// In-memory storage cho điểm đã nhập. Key: "${studentId}_${semesterId}_${subjectCode}".
+  static final Map<String, Map<String, dynamic>> _gradeStorage = {};
+
+  /// Tạo key định danh duy nhất cho 1 điểm.
+  static String _gradeKey(int studentId, int semesterId, String subjectCode) =>
+      '${studentId}_${semesterId}_$subjectCode';
+
+  /// Trả về danh sách điểm.
+  /// - Sinh viên: từ danh sách sinh viên (theo lớp)
+  /// - Môn học : từ chương trình khung (theo học kỳ + lớp)
+  /// - Điểm    : từ storage nếu đã nhập, ngược lại null
   static Future<List<Map<String, dynamic>>> getGradeBook({
     String? className,
     int? semesterId,
     String? subjectCode,
     String? search,
     int? studentId,
+    List<Map<String, dynamic>>? fromStudents,
   }) async {
-    await _delay();
-    var filteredStudents = canonicalStudents
+    // 1. Fetch Students
+    List<dynamic> allStudentsRaw = [];
+    try {
+      allStudentsRaw = await ApiService.getStudents();
+    } catch (_) {
+      allStudentsRaw = canonicalStudents;
+    }
+    
+    var filteredStudents = (fromStudents != null && fromStudents.isNotEmpty) 
+        ? fromStudents 
+        : allStudentsRaw.map((e) => Map<String, dynamic>.from(e)).toList();
+
+    filteredStudents = filteredStudents
         .where((s) => className == null || className.isEmpty || s['class_name'] == className)
         .toList();
-    // Lọc theo studentId (dùng cho màn điểm cá nhân của student)
     if (studentId != null) {
-      filteredStudents = filteredStudents.where((s) => s['student_id'] == studentId).toList();
+      filteredStudents = filteredStudents.where((s) => s['student_id'] == studentId || s['id'] == studentId).toList();
     }
-    final filteredSubjects = canonicalSubjects
-        .where((s) => subjectCode == null || subjectCode.isEmpty || s['subject_code'] == subjectCode)
-        .toList();
+
+    // 2. Fetch Courses from API
+    List<dynamic> allCoursesRaw = [];
+    try {
+      allCoursesRaw = await ApiService.getCourses(className: className, semesterId: semesterId);
+    } catch (_) {}
+
+    List<Map<String, dynamic>> subjects = allCoursesRaw.map((e) {
+      return {
+        'subject_code': e['code']?.toString() ?? e['subject_code']?.toString() ?? '',
+        'subject_name': e['subject_name']?.toString() ?? '',
+        'class_name': e['class_name']?.toString() ?? '',
+        'credits': e['credits'] ?? 3,
+        'semester_id': e['semester_id'],
+        'semester_name': e['semester_name'] ?? 'Học kỳ ${e['semester_id']}',
+      };
+    }).toList();
+
+    if (subjectCode != null && subjectCode.isNotEmpty) {
+      subjects = subjects.where((s) => s['subject_code'] == subjectCode).toList();
+    }
+
+    // 3. Fetch Grades from API
+    List<dynamic> allGradesRaw = [];
+    try {
+      allGradesRaw = await ApiService.getGrades(className: className, semesterId: semesterId);
+    } catch (_) {}
+    
+    Map<String, Map<String, dynamic>> gradesMap = {};
+    for (var g in allGradesRaw) {
+      final sId = g['student_id'];
+      final semId = g['semester_id'];
+      final subCode = g['subject_code']?.toString() ?? g['code']?.toString() ?? '';
+      if (sId != null && semId != null && subCode.isNotEmpty) {
+        gradesMap['${sId}_${semId}_$subCode'] = Map<String, dynamic>.from(g);
+      }
+    }
+
+    // 4. Cross Join
     final list = <Map<String, dynamic>>[];
     int rowId = 1;
     for (final s in filteredStudents) {
-      for (final sub in filteredSubjects) {
-        final cc = 5 + _rand.nextInt(5); // 5-9
-        final qk = 5 + _rand.nextInt(5); // 5-9
-        final ck = 4 + _rand.nextInt(6); // 4-9
-        final tong = (cc * 0.1 + qk * 0.3 + ck * 0.6);
+      for (final sub in subjects) {
+        if (s['class_name'] != sub['class_name']) continue;
+
+        final sId = s['student_id'] ?? s['id'];
+        final semId = sub['semester_id'] ?? 0;
+        final subCode = sub['subject_code'] ?? '';
+        final key = '${sId}_${semId}_$subCode';
+        
+        Map<String, dynamic>? saved = gradesMap[key];
+        final localSaved = _gradeStorage[key];
+        saved = localSaved ?? saved;
+
         list.add({
           'id': rowId++,
-          'student_id': s['student_id'],
-          'student_code': s['student_code'],
-          'full_name': s['full_name'],
+          'student_id': sId,
+          'student_code': s['student_code'] ?? s['code'],
+          'full_name': s['full_name'] ?? s['name'],
           'class_name': s['class_name'],
-          'subject_code': sub['subject_code'],
+          'subject_code': subCode,
           'subject_name': sub['subject_name'],
           'credits': sub['credits'],
-          'cc_score': cc,
-          'qkt_score': qk,
-          'ckt_score': ck,
-          'total_score': tong,
-          'grade': _letterGrade(tong),
-          'status': tong >= kPassThreshold ? 'pass' : 'fail',
-          'semester_id': semesterId ?? canonicalSemesters[0]['semester_id'],
+          'semester_id': semId,
+          'semester_name': sub['semester_name'],
+          'cc_score': saved?['cc_score'],
+          'qkt_score': saved?['qkt_score'],
+          'ckt_score': saved?['ckt_score'],
+          'total_score': saved?['total_score'],
+          'grade': saved?['grade'],
+          'status': saved?['status'],
+          'note': saved?['note'] ?? '',
+          '_key': key,
         });
       }
     }
+
     if (search != null && search.isNotEmpty) {
       final q = search.toLowerCase();
       return list.where((r) =>
-        (r['student_code'] as String).toLowerCase().contains(q) ||
-        (r['full_name'] as String).toLowerCase().contains(q) ||
-        (r['subject_code'] as String).toLowerCase().contains(q) ||
-        (r['subject_name'] as String).toLowerCase().contains(q)
+        (r['student_code']?.toString() ?? '').toLowerCase().contains(q) ||
+        (r['full_name']?.toString() ?? '').toLowerCase().contains(q) ||
+        (r['subject_code']?.toString() ?? '').toLowerCase().contains(q) ||
+        (r['subject_name']?.toString() ?? '').toLowerCase().contains(q)
       ).toList();
     }
     return list;
   }
 
-  /// Tính stats từ chính danh sách truyền vào (không trả số cứng 72/7.4/85.5/12).
+  /// Thêm / cập nhật một điểm vào storage.
+  static Future<Map<String, dynamic>> saveGrade({
+    required int studentId,
+    required int semesterId,
+    required String subjectCode,
+    required double ccScore,
+    required double qktScore,
+    required double cktScore,
+    String? note,
+  }) async {
+    await _delay();
+    final key = _gradeKey(studentId, semesterId, subjectCode);
+    final total = ccScore * 0.1 + qktScore * 0.3 + cktScore * 0.6;
+    final grade = _letterGrade(total);
+    final status = total >= kPassThreshold ? 'pass' : 'fail';
+
+    _gradeStorage[key] = {
+      'cc_score': ccScore,
+      'qkt_score': qktScore,
+      'ckt_score': cktScore,
+      'total_score': total,
+      'grade': grade,
+      'status': status,
+      'note': note ?? '',
+    };
+
+    try {
+      await ApiService.addGrade({
+        'student_id': studentId,
+        'semester_id': semesterId,
+        'subject_code': subjectCode,
+        'cc_score': ccScore,
+        'qkt_score': qktScore,
+        'ckt_score': cktScore,
+        'total_score': total,
+        'grade': grade,
+        'status': status,
+        'note': note ?? '',
+      });
+    } catch (_) {}
+
+    return _gradeStorage[key]!;
+  }
+
+  /// Xóa một điểm khỏi storage.
+  static Future<void> deleteGrade({
+    required int studentId,
+    required int semesterId,
+    required String subjectCode,
+  }) async {
+    await _delay();
+    final key = _gradeKey(studentId, semesterId, subjectCode);
+    _gradeStorage.remove(key);
+  }
+
+  /// Tính stats TỪ STORAGE (chỉ đếm dòng đã có điểm thật).
   static Future<Map<String, dynamic>> getGradeBookStats({
     String? className,
     int? semesterId,
@@ -470,23 +702,37 @@ class MockDataService {
   }) async {
     await _delay();
     final rows = fromRows ?? await getGradeBook(className: className, semesterId: semesterId);
-    final total = rows.length;
+
+    // Chỉ đếm những dòng đã có điểm thật
+    final gradedRows = rows.where((r) => r['total_score'] != null).toList();
+    final total = gradedRows.length;
+
     if (total == 0) {
-      return {'total_records': 0, 'average_score': 0.0, 'pass_rate': 0.0, 'pass_count': 0, 'fail_count': 0};
+      return {
+        'total_records': 0,
+        'total_slots': rows.length,
+        'average_score': 0.0,
+        'pass_rate': 0.0,
+        'pass_count': 0,
+        'fail_count': 0,
+        'graded_count': 0,
+      };
     }
     int passCount = 0;
     double sum = 0;
-    for (final r in rows) {
-      final t = (r['total_score'] as num).toDouble();
+    for (final r in gradedRows) {
+      final t = double.tryParse(r['total_score']?.toString() ?? '0') ?? 0.0;
       sum += t;
       if ((r['status'] ?? '') == 'pass') passCount++;
     }
     return {
       'total_records': total,
+      'total_slots': rows.length,
       'average_score': double.parse((sum / total).toStringAsFixed(2)),
       'pass_rate': double.parse((passCount / total * 100).toStringAsFixed(1)),
       'pass_count': passCount,
       'fail_count': total - passCount,
+      'graded_count': total,
     };
   }
 
@@ -556,13 +802,17 @@ class MockDataService {
   /// Dropdown học kỳ Grade Book — dùng canonical, format thống nhất.
   static Future<List<String>> getGradeBookSemesters() async {
     await _delay();
-    return canonicalSemesters.map((s) => s['semester_name'] as String).toList();
+    // Thêm '' cho option "Tất cả" để đồng nhất với các dropdown khác
+    final names = canonicalSemesters.map((s) => s['semester_name'] as String).toList();
+    return ['', ...names];
   }
 
   static Future<List<String>> getGradeBookSubjects() async {
     await _delay();
+    // Loại bỏ trùng lặp bằng Set để tránh lỗi DropdownButton
     return canonicalSubjects
         .map((s) => '${s['subject_code']} - ${s['subject_name']}')
+        .toSet() // deduplicate
         .toList();
   }
 
@@ -615,12 +865,13 @@ class MockDataService {
   /// Trả về danh sách học kỳ theo lớp (mock khi backend rỗng).
   /// Schema khớp backend /semesters: { id, name, semester_name, start_date, end_date, status, class_name }.
   static Future<List<Map<String, dynamic>>> getCurriculumSemesters({String? className}) async {
-    await _delay();
-    final c = (className ?? '').trim();
-    final list = canonicalSemesters
-        .where((s) => c.isEmpty || (s['class_name']?.toString() ?? '') == c)
-        .toList();
-    return list;
+    try {
+      final sems = await ApiService.getSemesters(className: className);
+      if (sems is List) {
+        return sems.map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+    } catch (_) {}
+    return [];
   }
 
   /// Trả về danh sách môn học cho 1 học kỳ (mock khi backend rỗng).
@@ -629,40 +880,67 @@ class MockDataService {
     required int semesterId,
     String? className,
   }) async {
-    await _delay();
-    final c = (className ?? '').trim();
-    final sem = canonicalSemesters.firstWhere(
-      (s) => s['id'] == semesterId,
-      orElse: () => const {},
-    );
-    if (sem.isEmpty) return [];
+    try {
+      final courses = await ApiService.getCourses(semesterId: semesterId, className: className);
+      if (courses is List) {
+        return courses.map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+    } catch (_) {}
+    return [];
+  }
 
-    // Chia 6 môn canonical thành 3 kỳ (2 môn/kỳ)
-    const layout = <int, List<int>>{
-      1: [0, 1], // Kỳ 1: IT001, IT002
-      2: [2, 3], // Kỳ 2: IT003, IT004
-      3: [4, 5], // Kỳ 3: IT005, IT006
+  // ============ GRADES DISPLAY (Student xem điểm chỉ đọc) ============
+
+  /// Trả về danh sách điểm của một sinh viên cụ thể.
+  /// Môn học: từ chương trình khung (theo học kỳ).
+  /// Điểm: từ storage nếu đã nhập, ngược lại null.
+  static Future<List<Map<String, dynamic>>> getStudentGrades(int studentId) async {
+    await _delay();
+    final rows = <Map<String, dynamic>>[];
+
+    for (final sem in canonicalSemesters) {
+      final semId = sem['semester_id'] as int;
+      final subjects = _getSubjectsForSemester(semId, null);
+
+      for (final subj in subjects) {
+        final key = _gradeKey(studentId, semId, subj['subject_code'] as String);
+        final saved = _gradeStorage[key];
+
+        rows.add({
+          'student_id': studentId,
+          'subject_code': subj['subject_code'],
+          'subject_name': subj['subject_name'],
+          'credits': subj['credits'],
+          'semester_id': semId,
+          'semester_name': sem['semester_name'],
+          'cc_score': saved?['cc_score'],
+          'qkt_score': saved?['qkt_score'],
+          'ckt_score': saved?['ckt_score'],
+          'total_score': saved?['total_score'],
+          'grade': saved?['grade'],
+          'status': saved?['status'],
+        });
+      }
+    }
+    return rows;
+  }
+
+  /// Trả về thống kê điểm của một sinh viên (chỉ từ điểm đã nhập).
+  static Future<Map<String, dynamic>> getStudentGradeStats(int studentId) async {
+    final grades = await getStudentGrades(studentId);
+    final graded = grades.where((g) => g['total_score'] != null).toList();
+    if (graded.isEmpty) {
+      return {'total': 0, 'graded': 0, 'average': 0.0, 'passed': 0, 'failed': 0};
+    }
+    final total = graded.length;
+    final passed = graded.where((g) => g['status'] == 'pass').length;
+    final avg = graded.map((g) => (g['total_score'] as double)).reduce((a, b) => a + b) / total;
+    return {
+      'total': grades.length,
+      'graded': total,
+      'average': double.parse(avg.toStringAsFixed(2)),
+      'passed': passed,
+      'failed': total - passed,
     };
-    final indexes = layout[semesterId] ?? const [0, 1];
-    return [
-      for (final i in indexes)
-        {
-          'id': 100 + semesterId * 10 + i,
-          'code': canonicalSubjects[i]['subject_code'],
-          'subject_code': canonicalSubjects[i]['subject_code'],
-          'name': canonicalSubjects[i]['subject_name'],
-          'subject_name': canonicalSubjects[i]['subject_name'],
-          'credits': canonicalSubjects[i]['credits'],
-          'credit': canonicalSubjects[i]['credits'],
-          'theory_hours': 30,
-          'practice_hours': 15,
-          'course_type': 'Bắt buộc',
-          'exam_form': canonicalSubjects[i]['exam_form'] ?? 'Tự luận',
-          'status': 'studying',
-          'semester_id': semesterId,
-          'semester_name': sem['name'],
-          'class_name': c.isEmpty ? 'CNTT01' : c,
-        }
-    ];
   }
 }

@@ -87,20 +87,68 @@ class ApiService {
   }
 
   static Future<void> addStudent(Map<String, dynamic> data) async {
-    await http.post(Uri.parse('$baseUrl/students'), headers: await authHeaders(), body: jsonEncode(data));
+    final res = await http.post(Uri.parse('$baseUrl/students'), headers: await authHeaders(), body: jsonEncode(data));
+    if (res.statusCode >= 400) {
+      final decoded = jsonDecode(res.body);
+      throw Exception(decoded['error'] ?? decoded['message'] ?? 'Thêm sinh viên thất bại');
+    }
   }
 
   static Future<void> updateStudent(int id, Map<String, dynamic> data) async {
-    await http.put(Uri.parse('$baseUrl/students/$id'), headers: await authHeaders(), body: jsonEncode(data));
+    final res = await http.put(Uri.parse('$baseUrl/students/$id'), headers: await authHeaders(), body: jsonEncode(data));
+    if (res.statusCode >= 400) {
+      final decoded = jsonDecode(res.body);
+      throw Exception(decoded['error'] ?? decoded['message'] ?? 'Cập nhật sinh viên thất bại');
+    }
   }
 
   static Future<void> deleteStudent(int id) async {
-    await http.delete(Uri.parse('$baseUrl/students/$id'), headers: await authHeaders());
+    final res = await http.delete(Uri.parse('$baseUrl/students/$id'), headers: await authHeaders());
+    if (res.statusCode >= 400) {
+      final decoded = jsonDecode(res.body);
+      throw Exception(decoded['error'] ?? decoded['message'] ?? 'Xóa sinh viên thất bại');
+    }
   }
 
-  static Future<List> getGrades(int studentId, {int? semesterId}) async {
-    var url = '$baseUrl/grades?studentId=$studentId';
-    if (semesterId != null) url += '&semesterId=$semesterId';
+  // --- TEACHERS ---
+  static Future<List> getTeachers({String? teacherCode}) async {
+    final url = teacherCode != null && teacherCode.isNotEmpty
+        ? '$baseUrl/teachers?teacherCode=${Uri.encodeComponent(teacherCode)}'
+        : '$baseUrl/teachers';
+    final res = await http.get(Uri.parse(url), headers: await authHeaders());
+    return jsonDecode(res.body);
+  }
+
+  static Future<void> addTeacher(Map<String, dynamic> data) async {
+    final res = await http.post(Uri.parse('$baseUrl/teachers'), headers: await authHeaders(), body: jsonEncode(data));
+    if (res.statusCode >= 400) {
+      final decoded = jsonDecode(res.body);
+      throw Exception(decoded['error'] ?? decoded['message'] ?? 'Thêm giáo viên thất bại');
+    }
+  }
+
+  static Future<void> updateTeacher(int id, Map<String, dynamic> data) async {
+    final res = await http.put(Uri.parse('$baseUrl/teachers/$id'), headers: await authHeaders(), body: jsonEncode(data));
+    if (res.statusCode >= 400) {
+      final decoded = jsonDecode(res.body);
+      throw Exception(decoded['error'] ?? decoded['message'] ?? 'Cập nhật giáo viên thất bại');
+    }
+  }
+
+  static Future<void> deleteTeacher(int id) async {
+    final res = await http.delete(Uri.parse('$baseUrl/teachers/$id'), headers: await authHeaders());
+    if (res.statusCode >= 400) {
+      final decoded = jsonDecode(res.body);
+      throw Exception(decoded['error'] ?? decoded['message'] ?? 'Xóa giáo viên thất bại');
+    }
+  }
+
+  static Future<List> getGrades({int? studentId, int? semesterId, String? className}) async {
+    final params = <String>[];
+    if (studentId != null) params.add('studentId=$studentId');
+    if (semesterId != null) params.add('semesterId=$semesterId');
+    if (className != null && className.isNotEmpty) params.add('className=$className');
+    final url = params.isNotEmpty ? '$baseUrl/grades?${params.join('&')}' : '$baseUrl/grades';
     final res = await http.get(Uri.parse(url), headers: await authHeaders());
     return jsonDecode(res.body);
   }

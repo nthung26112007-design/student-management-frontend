@@ -988,6 +988,7 @@ class _InvoiceDetailSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final code = invoice['invoice_code']?.toString() ?? '';
     final studentName = invoice['student_name']?.toString() ?? '';
+
     final studentCode = invoice['student_code']?.toString() ?? '';
     final className = invoice['class_name']?.toString() ?? '';
     final semester = invoice['semester']?.toString() ?? '';
@@ -996,7 +997,8 @@ class _InvoiceDetailSheet extends StatelessWidget {
     final paid = (invoice['paid_amount'] as num?) ?? 0;
     final remaining = total - paid;
     final status = (invoice['status'] ?? 'unpaid').toString();
-    final dueDate = invoice['due_date']?.toString() ?? '';
+    final rawDueDate = invoice['due_date']?.toString() ?? '';
+    final dueDate = rawDueDate.length >= 10 ? rawDueDate.substring(0, 10) : rawDueDate;
     final createdAt = invoice['created_at']?.toString() ?? '';
 
     late Color statusColor;
