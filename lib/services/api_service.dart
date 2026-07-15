@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-// const String baseUrl = 'http://192.168.100.170:3000/api'; // Android emulator
+// const String baseUrl = 'http://localhost:3000/api';
 const String baseUrl = String.fromEnvironment(
   'API_BASE_URL',
   defaultValue: 'https://student-management-backend-1-ilp9.onrender.com/api',
@@ -119,6 +119,22 @@ class ApiService {
     return jsonDecode(res.body);
   }
 
+  static Future<List<String>> getTeacherDepartments() async {
+    final res = await http.get(
+      Uri.parse('$baseUrl/teachers/departments'),
+      headers: await authHeaders(),
+    );
+    final decoded = jsonDecode(res.body);
+    if (res.statusCode >= 400) {
+      throw Exception(decoded is Map
+          ? decoded['error'] ?? decoded['message'] ?? 'Không tải được danh sách khoa'
+          : decoded.toString());
+    }
+    return decoded is List
+        ? decoded.map((item) => item.toString().trim()).where((item) => item.isNotEmpty).toList()
+        : <String>[];
+  }
+
   static Future<void> addTeacher(Map<String, dynamic> data) async {
     final res = await http.post(Uri.parse('$baseUrl/teachers'), headers: await authHeaders(), body: jsonEncode(data));
     if (res.statusCode >= 400) {
@@ -154,7 +170,11 @@ class ApiService {
   }
 
   static Future<void> addGrade(Map<String, dynamic> data) async {
-    await http.post(Uri.parse('$baseUrl/grades'), headers: await authHeaders(), body: jsonEncode(data));
+    final res = await http.post(Uri.parse('$baseUrl/grades'), headers: await authHeaders(), body: jsonEncode(data));
+    if (res.statusCode >= 400) {
+      final decoded = jsonDecode(res.body);
+      throw Exception(decoded is Map ? decoded['error'] ?? decoded['message'] ?? 'Thêm điểm thất bại' : decoded.toString());
+    }
   }
 
   static Future<void> updateGrade(int id, Map<String, dynamic> data) async {
@@ -253,6 +273,16 @@ class ApiService {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  static Future<Map<String, dynamic>> updateAttendanceSession(int id, Map<String, dynamic> data) async {
+    final res = await http.put(Uri.parse('$baseUrl/attendance/sessions/$id'), headers: await authHeaders(), body: jsonEncode(data));
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> deleteAttendanceSession(int id) async {
+    final res = await http.delete(Uri.parse('$baseUrl/attendance/sessions/$id'), headers: await authHeaders());
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   static Future<List> getAttendanceRecords({int? sessionId, int? studentId}) async {
     final params = <String>[];
     if (sessionId != null) params.add('sessionId=$sessionId');
@@ -338,20 +368,63 @@ class ApiService {
     if (className != null && className.isNotEmpty) params.add('className=${Uri.encodeComponent(className)}');
     final url = params.isNotEmpty ? '$baseUrl/schedules?${params.join('&')}' : '$baseUrl/schedules';
     final res = await http.get(Uri.parse(url), headers: await authHeaders());
-    return jsonDecode(res.body);
+    final decoded = jsonDecode(res.body);
+    if (res.statusCode >= 400) {
+      throw Exception(decoded is Map ? decoded['error'] ?? decoded['message'] ?? 'Không tải được lịch' : decoded.toString());
+    }
+    return decoded is List ? decoded : <dynamic>[];
   }
 
   static Future<Map<String, dynamic>> addSchedule(Map<String, dynamic> data) async {
     final res = await http.post(Uri.parse('$baseUrl/schedules'), headers: await authHeaders(), body: jsonEncode(data));
-    return jsonDecode(res.body) as Map<String, dynamic>;
+    final decoded = jsonDecode(res.body);
+    if (res.statusCode >= 400) {
+      throw Exception(decoded is Map ? decoded['error'] ?? decoded['message'] ?? 'Không tạo được lịch' : decoded.toString());
+    }
+    return Map<String, dynamic>.from(decoded as Map);
   }
 
   static Future<Map<String, dynamic>> updateSchedule(int id, Map<String, dynamic> data) async {
     final res = await http.put(Uri.parse('$baseUrl/schedules/$id'), headers: await authHeaders(), body: jsonEncode(data));
-    return jsonDecode(res.body) as Map<String, dynamic>;
+    final decoded = jsonDecode(res.body);
+    if (res.statusCode >= 400) {
+      throw Exception(decoded is Map ? decoded['error'] ?? decoded['message'] ?? 'Không cập nhật được lịch' : decoded.toString());
+    }
+    return Map<String, dynamic>.from(decoded as Map);
   }
 
   static Future<void> deleteSchedule(int id) async {
-    await http.delete(Uri.parse('$baseUrl/schedules/$id'), headers: await authHeaders());
+    final res = await http.delete(Uri.parse('$baseUrl/schedules/$id'), headers: await authHeaders());
+    if (res.statusCode >= 400) {
+      final decoded = jsonDecode(res.body);
+      throw Exception(decoded is Map ? decoded['error'] ?? decoded['message'] ?? 'Không xóa được lịch' : decoded.toString());
+    }
+  }
+
+  // --- CLASSES ---
+  static Future<List<dynamic>> getClasses() async {
+    final res = await http.get(Uri.parse('$baseUrl/classes'), headers: await authHeaders());
+    final decoded = jsonDecode(res.body);
+    if (res.statusCode >= 400) {
+      throw Exception(decoded is Map ? decoded['error'] ?? decoded['message'] ?? 'Không tải được lớp học' : decoded.toString());
+    }
+    return decoded is List ? decoded : <dynamic>[];
+  }
+
+  static Future<Map<String, dynamic>> addClass(Map<String, dynamic> data) async {
+    final res = await http.post(Uri.parse('$baseUrl/classes'), headers: await authHeaders(), body: jsonEncode(data));
+    if (res.statusCode != 201) throw Exception('Failed to add class: ${res.body}');
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> updateClass(int id, Map<String, dynamic> data) async {
+    final res = await http.put(Uri.parse('$baseUrl/classes/$id'), headers: await authHeaders(), body: jsonEncode(data));
+    if (res.statusCode != 200) throw Exception('Failed to update class: ${res.body}');
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  static Future<void> deleteClass(int id) async {
+    final res = await http.delete(Uri.parse('$baseUrl/classes/$id'), headers: await authHeaders());
+    if (res.statusCode != 200) throw Exception('Failed to delete class: ${res.body}');
   }
 }

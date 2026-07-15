@@ -12,6 +12,7 @@ class TeacherManagementScreen extends StatefulWidget {
 
 class _TeacherManagementScreenState extends State<TeacherManagementScreen> with SingleTickerProviderStateMixin {
   List<dynamic> _teachers = [];
+  List<String> _dbFaculties = [];
   List<dynamic> _filtered = [];
   bool _isLoading = true;
   String _role = '';
@@ -24,6 +25,14 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
 
   bool get _embedded => widget.embedded;
   final _searchController = TextEditingController();
+
+  final _addCodeC = TextEditingController();
+  final _addNameC = TextEditingController();
+  final _addEmailC = TextEditingController();
+  final _addPhoneC = TextEditingController();
+  final _addClassC = TextEditingController();
+  String _addGender = 'Nam';
+  String _addStatus = 'Đang dạy';
 
   @override
   void initState() {
@@ -42,6 +51,11 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
     _tabController.dispose();
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
+    _addCodeC.dispose();
+    _addNameC.dispose();
+    _addEmailC.dispose();
+    _addPhoneC.dispose();
+    _addClassC.dispose();
     super.dispose();
   }
 
@@ -61,87 +75,62 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
 
   Future<void> _loadTeachers() async {
     setState(() => _isLoading = true);
+
+    final departments = <String>{};
+
+    try {
+      departments.addAll(await ApiService.getTeacherDepartments());
+    } catch (e) {
+      debugPrint('Error loading teacher departments: $e');
+    }
+
+    // Also read faculties directly from classes. This keeps the dropdown
+    // complete when an older backend deployment returns only teacher data.
+    try {
+      final classes = await ApiService.getClasses();
+      for (final classItem in classes) {
+        final faculty = (classItem['faculty'] ?? '').toString().trim();
+        if (faculty.isNotEmpty) departments.add(faculty);
+      }
+    } catch (e) {
+      debugPrint('Error loading faculties from classes: $e');
+    }
+
     try {
       final data = await ApiService.getTeachers();
       if (!mounted) return;
       setState(() {
         if (data is List) {
-          _teachers = data.isNotEmpty ? data : _mockTeachers();
+          _teachers = data;
         } else if (data is Map) {
           _teachers = [data];
         } else {
-          _teachers = _mockTeachers();
+          _teachers = [];
         }
+
+        // Keep existing teacher departments available even when the lookup
+        // endpoint is empty or the classes table has no faculty values.
+        for (final teacher in _teachers) {
+          final department = (teacher['department'] ?? '').toString().trim();
+          if (department.isNotEmpty) departments.add(department);
+        }
+        _dbFaculties = departments.toList()..sort();
+
         _applyFilters();
         _isLoading = false;
       });
     } catch (e) {
+      debugPrint('Error loading teachers: $e');
       if (!mounted) return;
       setState(() {
-        _teachers = _mockTeachers();
+        _teachers = [];
+        _dbFaculties = departments.toList()..sort();
         _applyFilters();
         _isLoading = false;
       });
     }
   }
 
-  List<Map<String, dynamic>> _mockTeachers() {
-    final names = [
-      ['SV001', 'Nguyễn Văn An', 'Nam', '2003-05-12', 'an.nv@teacher.edu.vn', '0901234567', 'CNTT01', 'Đang dạy'],
-      ['SV002', 'Trần Thị Bình', 'Nữ', '2003-08-21', 'binh.tt@teacher.edu.vn', '0901234568', 'CNTT01', 'Đang dạy'],
-      ['SV003', 'Lê Hoàng Cường', 'Nam', '2002-11-03', 'cuong.lh@teacher.edu.vn', '0901234569', 'CNTT01', 'Đang dạy'],
-      ['SV004', 'Phạm Thị Dung', 'Nữ', '2003-02-14', 'dung.pt@teacher.edu.vn', '0901234570', 'CNTT01', 'Đang dạy'],
-      ['SV005', 'Hoàng Minh Đức', 'Nam', '2002-07-09', 'duc.hm@teacher.edu.vn', '0901234571', 'CNTT01', 'Đang dạy'],
-      ['SV006', 'Võ Thị Hoa', 'Nữ', '2003-09-25', 'hoa.vt@teacher.edu.vn', '0901234572', 'CNTT01', 'Đang dạy'],
-      ['SV007', 'Đặng Quốc Huy', 'Nam', '2002-04-18', 'huy.dq@teacher.edu.vn', '0901234573', 'CNTT01', 'Đang dạy'],
-      ['SV008', 'Bùi Thị Lan', 'Nữ', '2003-12-07', 'lan.bt@teacher.edu.vn', '0901234574', 'CNTT01', 'Bảo lưu'],
-      ['SV009', 'Ngô Văn Khánh', 'Nam', '2002-03-22', 'khanh.nv@teacher.edu.vn', '0901234575', 'CNTT01', 'Đang dạy'],
-      ['SV010', 'Đinh Thị Linh', 'Nữ', '2003-06-30', 'linh.dt@teacher.edu.vn', '0901234576', 'CNTT01', 'Đang dạy'],
-      ['SV011', 'Trương Văn Minh', 'Nam', '2002-10-11', 'minh.tv@teacher.edu.vn', '0901234577', 'CNTT02', 'Đang dạy'],
-      ['SV012', 'Phan Thị Ngọc', 'Nữ', '2003-01-19', 'ngoc.pt@teacher.edu.vn', '0901234578', 'CNTT02', 'Đang dạy'],
-      ['SV013', 'Lý Hoàng Phúc', 'Nam', '2002-08-08', 'phuc.lh@teacher.edu.vn', '0901234579', 'CNTT02', 'Đang dạy'],
-      ['SV014', 'Vũ Thị Quỳnh', 'Nữ', '2003-04-15', 'quynh.vt@teacher.edu.vn', '0901234580', 'CNTT02', 'Đang dạy'],
-      ['SV015', 'Tô Văn Sơn', 'Nam', '2002-12-28', 'son.tv@teacher.edu.vn', '0901234581', 'CNTT02', 'Đang dạy'],
-      ['SV016', 'Hồ Thị Trang', 'Nữ', '2003-07-04', 'trang.ht@teacher.edu.vn', '0901234582', 'CNTT02', 'Đang dạy'],
-      ['SV017', 'Châu Văn Tùng', 'Nam', '2002-05-17', 'tung.cv@teacher.edu.vn', '0901234583', 'CNTT02', 'Đang dạy'],
-      ['SV018', 'Dương Thị Uyên', 'Nữ', '2003-11-23', 'uyen.dt@teacher.edu.vn', '0901234584', 'CNTT02', 'Đang dạy'],
-      ['SV019', 'Lâm Văn Vinh', 'Nam', '2002-09-06', 'vinh.lv@teacher.edu.vn', '0901234585', 'CNTT02', 'Tốt nghiệp'],
-      ['SV020', 'Cao Thị Xuân', 'Nữ', '2003-03-14', 'xuan.ct@teacher.edu.vn', '0901234586', 'CNTT02', 'Đang dạy'],
-      ['SV021', 'Đỗ Hoàng Yên', 'Nam', '2002-06-29', 'yen.dh@teacher.edu.vn', '0901234587', 'ATTT01', 'Đang dạy'],
-      ['SV022', 'Mai Thị Hằng', 'Nữ', '2003-10-02', 'hang.mt@teacher.edu.vn', '0901234588', 'ATTT01', 'Đang dạy'],
-      ['SV023', 'Hà Văn Khôi', 'Nam', '2002-02-26', 'khoi.hv@teacher.edu.vn', '0901234589', 'ATTT01', 'Đang dạy'],
-      ['SV024', 'Kiều Thị Mai', 'Nữ', '2003-05-19', 'mai.kt@teacher.edu.vn', '0901234590', 'ATTT01', 'Đang dạy'],
-      ['SV025', 'Thái Văn Nam', 'Nam', '2002-11-11', 'nam.tv@teacher.edu.vn', '0901234591', 'ATTT01', 'Đang dạy'],
-      ['SV026', 'Lưu Thị Oanh', 'Nữ', '2003-08-05', 'oanh.lt@teacher.edu.vn', '0901234592', 'ATTT01', 'Bảo lưu'],
-      ['SV027', 'Tăng Văn Phát', 'Nam', '2002-01-30', 'phat.tv@teacher.edu.vn', '0901234593', 'ATTT01', 'Đang dạy'],
-      ['SV028', 'Quách Thị Quy', 'Nữ', '2003-12-16', 'quy.qt@teacher.edu.vn', '0901234594', 'ATTT01', 'Đang dạy'],
-      ['SV029', 'Tiêu Văn Rôn', 'Nam', '2002-07-23', 'ron.tv@teacher.edu.vn', '0901234595', 'KTPM01', 'Đang dạy'],
-      ['SV030', 'Âu Thị Sen', 'Nữ', '2003-04-08', 'sen.at@teacher.edu.vn', '0901234596', 'KTPM01', 'Đang dạy'],
-      ['SV031', 'Chung Văn Tài', 'Nam', '2002-10-25', 'tai.cv@teacher.edu.vn', '0901234597', 'KTPM01', 'Đang dạy'],
-      ['SV032', 'Mạc Thị Vân', 'Nữ', '2003-06-12', 'van.mt@teacher.edu.vn', '0901234598', 'KTPM01', 'Đang dạy'],
-      ['SV033', 'Nhâm Văn Ưng', 'Nam', '2002-03-09', 'ung.nv@teacher.edu.vn', '0901234599', 'KTPM01', 'Tốt nghiệp'],
-      ['SV034', 'Quan Thị Yến', 'Nữ', '2003-09-28', 'yen.qt@teacher.edu.vn', '0901234600', 'KTPM01', 'Đang dạy'],
-      ['SV035', 'Từ Văn Bảo', 'Nam', '2002-12-04', 'bao.tv@teacher.edu.vn', '0901234601', 'KTPM01', 'Đang dạy'],
-      ['SV036', 'Ứng Thị Cẩm', 'Nữ', '2003-02-21', 'cam.ut@teacher.edu.vn', '0901234602', 'CNTT01', 'Đang dạy'],
-      ['SV037', 'Vương Văn Đạt', 'Nam', '2002-05-15', 'dat.vv@teacher.edu.vn', '0901234603', 'CNTT02', 'Đang dạy'],
-      ['SV038', 'Hứa Thị Giang', 'Nữ', '2003-11-09', 'giang.ht@teacher.edu.vn', '0901234604', 'CNTT02', 'Đang dạy'],
-      ['SV039', 'Kha Văn Hào', 'Nam', '2002-04-02', 'hao.kv@teacher.edu.vn', '0901234605', 'ATTT01', 'Đang dạy'],
-      ['SV040', 'La Thị Kim', 'Nữ', '2003-08-17', 'kim.lt@teacher.edu.vn', '0901234606', 'KTPM01', 'Đang dạy'],
-    ];
-    return List.generate(names.length, (i) {
-      return {
-        'id': i + 1,
-        'teacher_code': names[i][0],
-        'full_name': names[i][1],
-        'gender': names[i][2],
-        'birth_date': names[i][3],
-        'email': names[i][4],
-        'phone': names[i][5],
-        'department': names[i][6],
-        'status': names[i][7],
-      };
-    });
-  }
 
   String _statusOf(Map s) {
     final raw = (s['status'] ?? '').toString().toLowerCase();
@@ -209,11 +198,12 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
     }).toList();
   }
 
-  List<String> _getUniqueClasses() {
+  List<String> _getUniqueDepartments() {
+    if (_dbFaculties.isNotEmpty) return _dbFaculties;
     final set = <String>{};
-    for (final s in _teachers) {
-      final c = (s['department'] ?? '').toString().trim();
-      if (c.isNotEmpty) set.add(c);
+    for (final t in _teachers) {
+      final d = (t['department'] ?? '').toString().trim();
+      if (d.isNotEmpty) set.add(d);
     }
     final list = set.toList();
     list.sort();
@@ -284,7 +274,6 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
     final birthC = TextEditingController(text: formattedBirth);
     String gender = existing?['gender']?.toString() ?? 'Nam';
     String status = existing != null ? _statusLabel(_statusOf(existing)) : 'Đang dạy';
-    final classes = _getUniqueClasses();
     final isEdit = existing != null;
 
     await showDialog(
@@ -321,7 +310,7 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
                   ]),
                   const SizedBox(height: 20),
                   Row(children: [
-                    Expanded(child: _inputField(isEdit ? 'Mã giáo viên' : 'Mã giáo viên *', codeC)),
+                    Expanded(child: _inputField(isEdit ? 'Mã giáo viên (Không thể sửa)' : 'Mã giáo viên *', codeC, readOnly: isEdit)),
                     const SizedBox(width: 12),
                     Expanded(child: _inputField(isEdit ? 'Họ và tên' : 'Họ và tên *', nameC)),
                   ]),
@@ -380,21 +369,21 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
                     Expanded(child: _inputField('Số điện thoại', phoneC, type: TextInputType.phone)),
                   ]),
                   const SizedBox(height: 12),
-                  if (classes.isNotEmpty)
+                  if (_dbFaculties.isNotEmpty)
                     DropdownButtonFormField<String>(
-                      value: classes.contains(classC.text) ? classC.text : null,
+                      value: _dbFaculties.contains(classC.text) ? classC.text : null,
                       decoration: const InputDecoration(
-                        labelText: 'Phòng ban',
+                        labelText: 'Phòng ban / Khoa',
                         border: OutlineInputBorder(),
                         isDense: true,
                       ),
-                      items: classes
+                      items: _dbFaculties
                           .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                           .toList(),
                       onChanged: (v) => setLocal(() => classC.text = v ?? ''),
                     )
                   else
-                    _inputField('Phòng ban', classC),
+                    _inputField('Phòng ban / Khoa', classC),
                   if (isEdit) ...[
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
@@ -487,14 +476,17 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
     );
   }
 
-  Widget _inputField(String label, TextEditingController c, {TextInputType? type}) {
+  Widget _inputField(String label, TextEditingController c, {TextInputType? type, bool readOnly = false}) {
     return TextField(
       controller: c,
       keyboardType: type,
+      readOnly: readOnly,
       decoration: InputDecoration(
         labelText: label,
         border: const OutlineInputBorder(),
         isDense: true,
+        filled: readOnly,
+        fillColor: readOnly ? Colors.grey.shade100 : null,
       ),
     );
   }
@@ -769,7 +761,7 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
                     _filterDropdown(
                       'Phòng ban',
                       _classFilter,
-                      {'all': 'Tất cả phòng ban', ...{for (final c in _getUniqueClasses()) c: c}},
+                      {'all': 'Tất cả phòng ban', ...{for (final c in _getUniqueDepartments()) c: c}},
                       (v) {
                         setState(() {
                           _classFilter = v ?? 'all';
@@ -1136,16 +1128,16 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
                       label: 'Họ và tên *',
                       hint: 'Nguyễn Văn A',
                       icon: Icons.person,
-                      controller: TextEditingController(),
+                      controller: _addNameC,
                     ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: _inlineFormField(
                       label: 'Mã giáo viên *',
-                      hint: 'SV001',
+                      hint: 'GV001',
                       icon: Icons.badge,
-                      controller: TextEditingController(),
+                      controller: _addCodeC,
                     ),
                   ),
                 ]),
@@ -1154,9 +1146,9 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
                   Expanded(
                     child: _inlineFormField(
                       label: 'Email',
-                      hint: 'sv@example.com',
+                      hint: 'gv@example.com',
                       icon: Icons.email,
-                      controller: TextEditingController(),
+                      controller: _addEmailC,
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -1165,19 +1157,42 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
                       label: 'Số điện thoại',
                       hint: '0901234567',
                       icon: Icons.phone,
-                      controller: TextEditingController(),
+                      controller: _addPhoneC,
                     ),
                   ),
                 ]),
                 const SizedBox(height: 16),
                 Row(children: [
                   Expanded(
-                    child: _inlineFormField(
-                      label: 'Phòng ban',
-                      hint: 'CNTT-K15',
-                      icon: Icons.class_,
-                      controller: TextEditingController(),
-                    ),
+                    child: _dbFaculties.isNotEmpty
+                        ? DropdownButtonFormField<String>(
+                            value: _dbFaculties.contains(_addClassC.text) && _addClassC.text.isNotEmpty ? _addClassC.text : null,
+                            decoration: InputDecoration(
+                              labelText: 'Phòng ban / Khoa',
+                              prefixIcon: const Icon(Icons.class_, color: Color(0xFF6366F1), size: 18),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+                              ),
+                              filled: true,
+                              fillColor: const Color(0xFFF9FAFB),
+                              isDense: true,
+                            ),
+                            items: _dbFaculties
+                                .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                                .toList(),
+                            onChanged: (v) => setState(() => _addClassC.text = v ?? ''),
+                          )
+                        : _inlineFormField(
+                            label: 'Phòng ban / Khoa',
+                            hint: 'CNTT',
+                            icon: Icons.class_,
+                            controller: _addClassC,
+                          ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -1189,7 +1204,7 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
                         border: Border.all(color: const Color(0xFFE5E7EB)),
                       ),
                       child: Row(
-                                          children: [
+                        children: [
                           const Icon(Icons.check_circle_outline, color: Color(0xFFF97316)),
                           const SizedBox(width: 10),
                           const Text('Trạng thái: Đang dạy', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -1202,18 +1217,58 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: _showAddForm,
-                    icon: const Icon(Icons.add_circle_outline),
-                    label: const Text('Mở form nhập chi tiết'),
+                    onPressed: () async {
+                      if (_addCodeC.text.trim().isEmpty || _addNameC.text.trim().isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Vui lòng nhập Mã giáo viên và Họ tên')),
+                        );
+                        return;
+                      }
+                      try {
+                        final payload = <String, dynamic>{
+                          'teacher_code': _addCodeC.text.trim(),
+                          'full_name': _addNameC.text.trim(),
+                          'gender': _addGender,
+                          'email': _addEmailC.text.trim(),
+                          'phone': _addPhoneC.text.trim(),
+                          'department': _addClassC.text.trim(),
+                          'status': _addStatus == 'Đang dạy' ? 'active' : 'quit',
+                        };
+                        await ApiService.addTeacher(payload);
+                        if (!mounted) return;
+                        
+                        // Clear inputs
+                        _addCodeC.clear();
+                        _addNameC.clear();
+                        _addEmailC.clear();
+                        _addPhoneC.clear();
+                        _addClassC.clear();
+                        
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Thêm giáo viên thành công')),
+                        );
+                        
+                        // Switch to list tab and reload
+                        _tabController.animateTo(0);
+                        _loadTeachers();
+                      } catch (e) {
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Lỗi: $e')),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.save),
+                    label: const Text('Lưu giáo viên'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFF97316),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       elevation: 0,
                     ),
-                          ),
-              ),
-            ],
+                  ),
+                ),
+              ],
           ),
         ),
         ],
