@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/api_service.dart';
 import '../services/mock_data_service.dart';
 
 class TuitionScreen extends StatefulWidget {
@@ -34,21 +35,55 @@ class _TuitionScreenState extends State<TuitionScreen> with SingleTickerProvider
 
   Future<void> _loadData() async {
     try {
-      final invoices = await MockDataService.getTuitionInvoices(studentId: widget.studentId);
       final results = await Future.wait([
-        // Tính summary từ invoices truyền vào — đảm bảo khớp bảng
-        MockDataService.getTuitionSummary(fromInvoices: invoices),
-        Future.value(invoices),
-        MockDataService.getTuitionPayments(fromInvoices: invoices),
+        ApiService.getTuitionInvoices(studentId: widget.studentId),
+        ApiService.getTuitionPayments(studentId: widget.studentId),
       ]);
-      final r0 = results[0] as Map<String, dynamic>;
-      final r1 = results[1] as List;
-      final r2 = results[2] as List;
+      final invoices = (results[0] as List).map((item) {
+        final row = Map<String, dynamic>.from(item as Map);
+        final amount = num.tryParse((row['amount'] ?? 0).toString()) ?? 0;
+        final paid = num.tryParse((row['paid_amount'] ?? 0).toString()) ?? 0;
+        return {
+          ...row,
+          'student_name': row['full_name'] ?? '',
+          'class_name': row['class_name'] ?? row['student_class_name'] ?? '',
+          'semester': row['semester_name'] ?? (row['semester_id'] == null ? 'Chưa xác định học kỳ' : 'Học kỳ ${row['semester_id']}'),
+          'description': row['title'] ?? row['note'] ?? 'Học phí',
+          'total_amount': amount,
+          'paid_amount': paid,
+          'remaining_amount': num.tryParse((row['remaining_amount'] ?? amount - paid).toString()) ?? amount - paid,
+          'credits': num.tryParse((row['credits'] ?? 0).toString()) ?? 0,
+          'tuition_per_credit': num.tryParse((row['tuition_per_credit'] ?? 350000).toString()) ?? 350000,
+        };
+      }).toList();
+      final payments = (results[1] as List).map((item) {
+        final row = Map<String, dynamic>.from(item as Map);
+        return {
+          ...row,
+          'payment_code': row['payment_code'] ?? 'PAY${row['id'] ?? ''}',
+          'date': row['payment_date'] ?? '',
+          'method': row['method'] ?? 'Thanh toán',
+          'note': row['note'] ?? '',
+          'amount': num.tryParse((row['amount'] ?? 0).toString()) ?? 0,
+        };
+      }).toList();
+      final total = invoices.fold<num>(0, (sum, row) => sum + (row['total_amount'] as num));
+      final paid = invoices.fold<num>(0, (sum, row) => sum + (row['paid_amount'] as num));
       if (!mounted) return;
       setState(() {
-        _summary = r0;
-        _invoices = r1.map((e) => Map<String, dynamic>.from(e)).toList();
-        _payments = r2.map((e) => Map<String, dynamic>.from(e)).toList();
+        _summary = {
+          'total_amount': total,
+          'paid_amount': paid,
+          'remaining_amount': total - paid,
+          'paid_percent': total == 0 ? 0.0 : paid / total * 100,
+          'unpaid_invoices': invoices.where((row) => row['status'] == 'unpaid').length,
+          'overdue_invoices': invoices.where((row) {
+            final due = DateTime.tryParse((row['due_date'] ?? '').toString());
+            return due != null && due.isBefore(DateTime.now()) && row['status'] != 'paid';
+          }).length,
+        };
+        _invoices = invoices;
+        _payments = payments;
         _isLoading = false;
       });
     } catch (_) {
@@ -184,21 +219,21 @@ class _TuitionScreenState extends State<TuitionScreen> with SingleTickerProvider
         ),
       ),
       actions: [
-        IconButton(
-          icon: const Icon(Icons.add_circle_outline_rounded),
-          onPressed: () => _showAddInvoiceDialog(),
-          tooltip: 'Tạo hóa đơn',
-        ),
-        IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: _loadData),
+        if (widget.role == 'admin')
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline_rounded),
+            onPressed: () => _showAddInvoiceDialog(),
+            tooltip: 'Tạo hóa đơn',
+          ),
       ],
     );
   }
 
   Widget _buildSummaryCard() {
     final paid = _summary['paid_amount'] ?? 0;
-    final total = _summary['total_amount'] ?? 1;
+    final total = _summary['total_amount'] ?? 0;
     final remain = _summary['remaining_amount'] ?? 0;
-    final percent = ((paid / total) * 100).toStringAsFixed(1);
+    final percent = total == 0 ? '0.0' : ((paid / total) * 100).toStringAsFixed(1);
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -259,7 +294,9 @@ class _TuitionScreenState extends State<TuitionScreen> with SingleTickerProvider
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: LinearProgressIndicator(
-              value: (paid as num) / (total as num),
+              value: (num.tryParse(total.toString()) ?? 0) <= 0
+                  ? 0
+                  : (num.tryParse(paid.toString()) ?? 0) / (num.tryParse(total.toString()) ?? 1),
               minHeight: 8,
               backgroundColor: Colors.white.withOpacity(0.25),
               valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
@@ -373,7 +410,7 @@ class _TuitionScreenState extends State<TuitionScreen> with SingleTickerProvider
   }
 
   Widget _buildInvoiceCard(Map<String, dynamic> invoice) {
-    final status = invoice['status'] as String;
+    final status = (invoice['status'] ?? 'unpaid').toString();
     final color = _statusColor(status);
     final total = ((invoice['total_amount'] ?? 0) as num).toDouble();
     final paid = ((invoice['paid_amount'] ?? 0) as num).toDouble();
@@ -420,7 +457,7 @@ class _TuitionScreenState extends State<TuitionScreen> with SingleTickerProvider
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        invoice['invoice_code'] as String,
+                        (invoice['invoice_code'] ?? 'Chưa có mã hóa đơn').toString(),
                         style: const TextStyle(
                           fontWeight: FontWeight.w800,
                           fontSize: 14,
@@ -429,7 +466,7 @@ class _TuitionScreenState extends State<TuitionScreen> with SingleTickerProvider
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        invoice['semester'] as String,
+                        (invoice['semester'] ?? 'Chưa xác định học kỳ').toString(),
                         style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
                       ),
                     ],
@@ -573,7 +610,7 @@ class _TuitionScreenState extends State<TuitionScreen> with SingleTickerProvider
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  payment['payment_code'] as String,
+                  (payment['payment_code'] ?? 'Chưa có mã thanh toán').toString(),
                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF111827)),
                 ),
                 const SizedBox(height: 4),
@@ -581,10 +618,10 @@ class _TuitionScreenState extends State<TuitionScreen> with SingleTickerProvider
                   'Hóa đơn ${payment['invoice_code']} • ${payment['method']}',
                   style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
                 ),
-                if ((payment['note'] as String).isNotEmpty) ...[
+                if ((payment['note'] ?? '').toString().isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(
-                    payment['note'] as String,
+                    (payment['note'] ?? '').toString(),
                     style: const TextStyle(fontSize: 11, color: Color(0xFF374151), fontStyle: FontStyle.italic),
                   ),
                 ],
@@ -604,7 +641,7 @@ class _TuitionScreenState extends State<TuitionScreen> with SingleTickerProvider
               ),
               const SizedBox(height: 4),
               Text(
-                payment['date'] as String,
+                (payment['date'] ?? '').toString(),
                 style: const TextStyle(fontSize: 10, color: Color(0xFF9CA3AF)),
               ),
             ],
@@ -631,50 +668,27 @@ class _TuitionScreenState extends State<TuitionScreen> with SingleTickerProvider
         child: Container(
           width: 520,
           padding: const EdgeInsets.all(24),
-          child: const _CreateInvoiceDialog(),
+          child: const _BulkInvoiceDialog(),
         ),
       ),
     );
     if (result == null || !mounted) return;
-    final amount = ((result['amount'] ?? 0) as num).toDouble();
-    setState(() {
-      // Đảm bảo invoice mới đủ schema mà UI đọc (không gây crash runtime).
-      final newRow = <String, dynamic>{
-        'id': DateTime.now().millisecondsSinceEpoch,
-        'invoice_code': result['invoice_code'],
-        'student_id': result['student_id'],
-        'student_code': result['student_code'],
-        'student_name': result['student_name'],
-        'class_name': result['class_name'],
-        'semester_id': result['semester_id'],
-        'semester': result['semester'],
-        'description': result['description'],
-        'total_amount': amount,
-        'paid_amount': 0,
-        'remaining_amount': amount, // = total - paid
-        'credits': result['credits'] ?? 0,
-        'tuition_per_credit': result['tuition_per_credit'] ?? 0,
-        'due_date': result['due_date'],
-        'status': 'unpaid',
-        'created_at': DateTime.now().toIso8601String().substring(0, 10),
-      };
-      _invoices.insert(0, newRow);
-      // Tính lại summary từ cache để số liệu khớp ngay
-      _summary = {
-        'total_amount': _invoices.fold<int>(0, (s, x) => s + ((x['total_amount'] ?? 0) as num).toInt()),
-        'paid_amount': _invoices.fold<int>(0, (s, x) => s + ((x['paid_amount'] ?? 0) as num).toInt()),
-        'remaining_amount': _invoices.fold<int>(0, (s, x) => s + ((x['remaining_amount'] ?? 0) as num).toInt()),
-        'paid_percent': 0.0,
-        'unpaid_invoices': _invoices.where((x) => (x['status'] ?? '') == 'unpaid').length,
-        'overdue_invoices': 0,
-      };
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Đã tạo hóa đơn: ${result['invoice_code']}'),
-        backgroundColor: const Color(0xFF10B981),
-      ),
-    );
+    try {
+      final response = await ApiService.addTuitionInvoicesByClass(result);
+      await _loadData();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${response['message']} • ${response['credits']} tín chỉ × 350.000đ'),
+          backgroundColor: const Color(0xFF10B981),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Không tạo được hóa đơn: $error'), backgroundColor: const Color(0xFFEF4444)),
+      );
+    }
   }
 
   Color _statusColor(String status) {
@@ -697,6 +711,170 @@ class _TuitionScreenState extends State<TuitionScreen> with SingleTickerProvider
 }
 
 // ============ Create Invoice Dialog ============
+
+class _BulkInvoiceDialog extends StatefulWidget {
+  const _BulkInvoiceDialog();
+
+  @override
+  State<_BulkInvoiceDialog> createState() => _BulkInvoiceDialogState();
+}
+
+class _BulkInvoiceDialogState extends State<_BulkInvoiceDialog> {
+  static const int _unitPrice = 350000;
+  List<Map<String, dynamic>> _classes = [];
+  List<Map<String, dynamic>> _semesters = [];
+  List<Map<String, dynamic>> _courses = [];
+  String? _className;
+  int? _semesterId;
+  DateTime _dueDate = DateTime.now().add(const Duration(days: 30));
+  bool _loading = true;
+
+  int get _credits => _courses
+      .where((course) => int.tryParse((course['semester_id'] ?? '').toString()) == _semesterId)
+      .fold(0, (sum, course) => sum + (int.tryParse((course['credits'] ?? 0).toString()) ?? 0));
+
+  @override
+  void initState() {
+    super.initState();
+    _loadClasses();
+  }
+
+  Future<void> _loadClasses() async {
+    try {
+      final rows = await ApiService.getClasses();
+      _classes = rows.map((row) => Map<String, dynamic>.from(row as Map)).toList();
+      _className = _classes.isEmpty ? null : (_classes.first['name'] ?? '').toString();
+      await _loadClassData();
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadClassData() async {
+    final className = _className;
+    if (className == null || className.isEmpty) return;
+    setState(() => _loading = true);
+    try {
+      final values = await Future.wait([
+        ApiService.getSemesters(className: className),
+        ApiService.getCourses(className: className),
+      ]);
+      if (!mounted || className != _className) return;
+      setState(() {
+        _semesters = (values[0] as List).map((row) => Map<String, dynamic>.from(row as Map)).toList();
+        _courses = (values[1] as List).map((row) => Map<String, dynamic>.from(row as Map)).toList();
+        _semesterId = _semesters.isEmpty ? null : int.tryParse((_semesters.first['id'] ?? '').toString());
+      });
+    } finally {
+      if (mounted && className == _className) setState(() => _loading = false);
+    }
+  }
+
+  String _money(int value) => value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (match) => '.');
+
+  Future<void> _pickDueDate() async {
+    final value = await showDatePicker(
+      context: context,
+      initialDate: _dueDate,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (value != null) setState(() => _dueDate = value);
+  }
+
+  InputDecoration _dec(String label) => InputDecoration(labelText: label, border: const OutlineInputBorder(), isDense: true);
+
+  @override
+  Widget build(BuildContext context) {
+    final amount = _credits * _unitPrice;
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Tạo hóa đơn học phí theo lớp', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 6),
+          const Text('Hệ thống tạo hóa đơn cho toàn bộ sinh viên trong lớp.', style: TextStyle(color: Color(0xFF6B7280))),
+          const SizedBox(height: 18),
+          DropdownButtonFormField<String>(
+            value: _classes.any((row) => row['name']?.toString() == _className) ? _className : null,
+            decoration: _dec('Lớp học'),
+            isExpanded: true,
+            items: _classes.map((row) {
+              final name = (row['name'] ?? '').toString();
+              return DropdownMenuItem(value: name, child: Text(name));
+            }).toList(),
+            onChanged: _loading ? null : (value) {
+              setState(() {
+                _className = value;
+                _semesterId = null;
+                _semesters = [];
+                _courses = [];
+              });
+              _loadClassData();
+            },
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<int>(
+            value: _semesters.any((row) => int.tryParse((row['id'] ?? '').toString()) == _semesterId) ? _semesterId : null,
+            decoration: _dec('Học kỳ'),
+            isExpanded: true,
+            items: _semesters
+                .where((row) => int.tryParse((row['id'] ?? '').toString()) != null)
+                .map((row) {
+                  final id = int.parse(row['id'].toString());
+                  return DropdownMenuItem<int>(value: id, child: Text((row['name'] ?? 'Học kỳ $id').toString()));
+                }).toList(),
+            onChanged: _loading ? null : (value) => setState(() => _semesterId = value),
+          ),
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: _pickDueDate,
+            child: InputDecorator(
+              decoration: _dec('Hạn đóng'),
+              child: Text('${_dueDate.day.toString().padLeft(2, '0')}/${_dueDate.month.toString().padLeft(2, '0')}/${_dueDate.year}'),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: const Color(0xFFF5F3FF), borderRadius: BorderRadius.circular(12)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Tổng tín chỉ: $_credits', style: const TextStyle(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              const Text('Đơn giá: 350.000đ / tín chỉ'),
+              const SizedBox(height: 6),
+              Text('Học phí mỗi sinh viên: ${_money(amount)}đ', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Color(0xFF7C3AED))),
+            ]),
+          ),
+          const SizedBox(height: 18),
+          Row(children: [
+            Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy'))),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: ElevatedButton.icon(
+                onPressed: _loading || _className == null || _semesterId == null || _credits <= 0
+                    ? null
+                    : () => Navigator.pop(context, {
+                          'class_name': _className,
+                          'semester_id': _semesterId,
+                          'due_date': _dueDate.toIso8601String().substring(0, 10),
+                          'title': 'Học phí học kỳ $_semesterId',
+                          'note': '$_credits tín chỉ × 350.000đ',
+                        }),
+                icon: const Icon(Icons.receipt_long_rounded),
+                label: const Text('Tạo hóa đơn cho cả lớp'),
+              ),
+            ),
+          ]),
+          if (_loading) const Padding(padding: EdgeInsets.only(top: 12), child: LinearProgressIndicator()),
+        ],
+      ),
+    );
+  }
+}
 
 class _CreateInvoiceDialog extends StatefulWidget {
   const _CreateInvoiceDialog();

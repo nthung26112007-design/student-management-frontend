@@ -338,6 +338,19 @@ class ApiService {
     return decoded is Map<String, dynamic> ? decoded : {'raw': decoded};
   }
 
+  static Future<Map<String, dynamic>> addTuitionInvoicesByClass(Map<String, dynamic> data) async {
+    final res = await http.post(
+      Uri.parse('$baseUrl/fees/invoices/bulk'),
+      headers: await authHeaders(),
+      body: jsonEncode(data),
+    );
+    final decoded = jsonDecode(res.body);
+    if (res.statusCode >= 400) {
+      throw Exception(decoded is Map ? decoded['message']?.toString() ?? decoded.toString() : decoded.toString());
+    }
+    return decoded is Map<String, dynamic> ? decoded : Map<String, dynamic>.from(decoded as Map);
+  }
+
   static Future<void> updateTuitionInvoice(int id, Map<String, dynamic> data) async {
     await http.put(Uri.parse('$baseUrl/fees/invoices/$id'), headers: await authHeaders(), body: jsonEncode(data));
   }
@@ -360,6 +373,24 @@ class ApiService {
     final url = studentId != null ? '$baseUrl/fees/summary?studentId=$studentId' : '$baseUrl/fees/summary';
     final res = await http.get(Uri.parse(url), headers: await authHeaders());
     return jsonDecode(res.body);
+  }
+
+  static Future<Map<String, dynamic>> getStatsOverview() async {
+    final res = await http.get(Uri.parse('$baseUrl/stats/overview'), headers: await authHeaders());
+    final decoded = jsonDecode(res.body);
+    if (res.statusCode >= 400) {
+      throw Exception(decoded is Map ? decoded['error'] ?? decoded['message'] ?? 'Không tải được thống kê' : decoded.toString());
+    }
+    return decoded is Map<String, dynamic> ? decoded : Map<String, dynamic>.from(decoded as Map);
+  }
+
+  static Future<List<dynamic>> getAcademicReport() async {
+    final res = await http.get(Uri.parse('$baseUrl/stats/academic-report'), headers: await authHeaders());
+    final decoded = jsonDecode(res.body);
+    if (res.statusCode >= 400) {
+      throw Exception(decoded is Map ? decoded['error'] ?? decoded['message'] ?? 'Không tải được báo cáo học tập' : decoded.toString());
+    }
+    return decoded is List ? decoded : <dynamic>[];
   }
 
   static Future<List> getSchedules({String? type, String? className}) async {
