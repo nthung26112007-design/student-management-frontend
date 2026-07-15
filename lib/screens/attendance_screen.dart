@@ -64,7 +64,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
         if (allCourses is List) {
           final courses = allCourses.map((e) {
             final code = e['code']?.toString() ?? e['subject_code']?.toString() ?? '';
-            final name = e['subject_name']?.toString() ?? '';
+            final name = e['name']?.toString() ?? e['subject_name']?.toString() ?? '';
             return '$code - $name';
           }).where((s) => s != ' - ').toSet().toList();
           
@@ -587,7 +587,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        session['subject']?.toString() ?? '',
+                        session['session_title']?.toString() ?? session['subject_name']?.toString() ?? '',
                         style: const TextStyle(
                           fontWeight: FontWeight.w800,
                           fontSize: 15,
@@ -596,18 +596,50 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${session['time']} • Phòng ${session['room']}',
+                        [
+                          if (session['start_time'] != null && session['end_time'] != null)
+                            '${session['start_time']} - ${session['end_time']}',
+                          if (session['room'] != null)
+                            'Phòng ${session['room']}',
+                        ].join(' • '),
                         style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Lớp ${session['class_name']}',
+                        [
+                          'Lớp ${session['class_name']}',
+                          if (session['lecturer'] != null && session['lecturer'].toString().isNotEmpty)
+                            'GV: ${session['lecturer']}',
+                        ].join(' • '),
                         style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)),
                       ),
                     ],
                   ),
                 ),
-                _statusBadge(status),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert_rounded, size: 20, color: Color(0xFF6B7280)),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onSelected: (val) {
+                        if (val == 'edit') {
+                          _showCreateSessionDialog(initialSession: session);
+                        } else if (val == 'delete') {
+                          _deleteSession(session['id']);
+                        }
+                      },
+                      itemBuilder: (_) => [
+                        const PopupMenuItem(value: 'edit', child: Text('Sửa buổi học')),
+                        const PopupMenuItem(value: 'delete', child: Text('Xóa buổi học')),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _statusBadge(status),
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -682,7 +714,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
     });
   }
 
-  void _showCreateSessionDialog() async {
+  void _showCreateSessionDialog({Map<String, dynamic>? initialSession}) async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) => Dialog(
@@ -693,34 +725,95 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
           child: _CreateSessionDialog(
             classOptions: _classOptions,
             subjectOptions: _subjectOptions,
+            initialSession: initialSession,
           ),
         ),
       ),
     );
     if (result == null || !mounted) return;
-    setState(() {
-      _sessions.add({
-        'id': DateTime.now().millisecondsSinceEpoch,
-        'date': result['date'],
-        'time': '${result['start_time']} - ${result['end_time']}',
-        'subject': result['subject'],
-        'subject_code': (result['subject']?.toString() ?? '').contains(' - ')
-            ? (result['subject']?.toString() ?? '').split(' - ').first
-            : result['subject'],
+
+    final subjectStr = result['subject']?.toString() ?? '';
+    final parts = subjectStr.split(' - ');
+    final subjectCode = parts.first.trim();
+    final subjectName = parts.length > 1 ? parts.sublist(1).join(' - ') : subjectStr;
+    final rawDate = result['date']?.toString() ?? '';
+    final dateParts = rawDate.split('-');
+    final displayDate = dateParts.length == 3
+        ? '${dateParts[2]}/${dateParts[1]}/${dateParts[0]}'
+        : rawDate;
+    final sessionTitle = '$displayDate - ${result['class_name']} - $subjectName';
+
+    try {
+      final payload = {
+        'session_title': sessionTitle,
+        'session_date': result['date'],
         'class_name': result['class_name'],
+        'course_id': null, 
+        'subject_code': subjectCode,
         'room': result['room'],
+        'start_time': result['start_time'],
+        'end_time': result['end_time'],
         'lecturer': result['lecturer'],
-        'status': 'present',
-        'present_count': 0,
-        'total_count': 0,
-      });
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Đã tạo buổi điểm danh: ${result['subject']} - ${result['date']}'),
-        backgroundColor: const Color(0xFF10B981),
-      ),
+        'teacher_id': result['teacher_id'],
+      };
+
+      if (initialSession != null) {
+        await ApiService.updateAttendanceSession(initialSession['id'], payload);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đã cập nhật buổi điểm danh thành công'), backgroundColor: Color(0xFF10B981)),
+        );
+      } else {
+        await ApiService.addAttendanceSession(payload);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đã tạo buổi điểm danh thành công'), backgroundColor: Color(0xFF10B981)),
+        );
+      }
+      
+      _loadData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi: $e'),
+          backgroundColor: const Color(0xFFEF4444),
+        ),
+      );
+    }
+  }
+
+  void _deleteSession(int id) async {
+    final conf = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Xác nhận xóa'),
+        content: const Text('Bạn có chắc chắn muốn xóa buổi điểm danh này không? Mọi dữ liệu điểm danh sẽ bị mất.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true), 
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Xóa')
+          ),
+        ],
+      )
     );
+    if (conf != true) return;
+
+    try {
+      await ApiService.deleteAttendanceSession(id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã xóa buổi điểm danh'), backgroundColor: Color(0xFF10B981)),
+      );
+      _loadData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi xóa: $e'), backgroundColor: const Color(0xFFEF4444)),
+      );
+    }
   }
 
   String _monthFromDate(String date) {
@@ -771,14 +864,19 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
 class _CreateSessionDialog extends StatefulWidget {
   final List<String> classOptions;
   final List<String> subjectOptions;
-  const _CreateSessionDialog({required this.classOptions, required this.subjectOptions});
+  final Map<String, dynamic>? initialSession;
+
+  const _CreateSessionDialog({
+    required this.classOptions,
+    required this.subjectOptions,
+    this.initialSession,
+  });
 
   @override
   State<_CreateSessionDialog> createState() => _CreateSessionDialogState();
 }
 
 class _CreateSessionDialogState extends State<_CreateSessionDialog> {
-  final _lecturerC = TextEditingController(text: 'GV. Nguyễn Văn A');
   DateTime _date = DateTime.now();
   TimeOfDay _start = const TimeOfDay(hour: 7, minute: 30);
   TimeOfDay _end = const TimeOfDay(hour: 9, minute: 30);
@@ -788,43 +886,126 @@ class _CreateSessionDialogState extends State<_CreateSessionDialog> {
   String? _subject;
   String? _class;
   String? _room;
+  String? _teacher;
+  int? _teacherId;
   List<String> _localSubjectOptions = [];
+  List<String> _teacherOptions = [];
+  final Map<String, int> _teacherIds = {};
+  bool _isLoadingSubjects = false;
+  int _subjectRequestId = 0;
 
   @override
   void initState() {
     super.initState();
     _localSubjectOptions = widget.subjectOptions;
-    _subject = _localSubjectOptions.isNotEmpty ? _localSubjectOptions.first : '';
-    _class = widget.classOptions.isNotEmpty ? widget.classOptions.first : '';
-    _room = _rooms.first;
+    
+    if (widget.initialSession != null) {
+      final s = widget.initialSession!;
+      _class = s['class_name']?.toString() ?? '';
+      _room = s['room']?.toString();
+      _teacher = s['lecturer']?.toString();
+      _teacherId = int.tryParse((s['teacher_id'] ?? '').toString());
+      
+      if (s['session_date'] != null) {
+        try { _date = DateTime.parse(s['session_date']); } catch (_) {}
+      }
+      if (s['start_time'] != null) {
+        final pts = s['start_time'].split(':');
+        if (pts.length >= 2) _start = TimeOfDay(hour: int.tryParse(pts[0]) ?? 7, minute: int.tryParse(pts[1]) ?? 30);
+      }
+      if (s['end_time'] != null) {
+        final pts = s['end_time'].split(':');
+        if (pts.length >= 2) _end = TimeOfDay(hour: int.tryParse(pts[0]) ?? 9, minute: int.tryParse(pts[1]) ?? 30);
+      }
+      final scode = s['subject_code']?.toString() ?? '';
+      final sname = s['subject_name']?.toString() ?? s['session_title']?.toString() ?? '';
+      _subject = '$scode - $sname';
+    } else {
+      _subject = _localSubjectOptions.isNotEmpty ? _localSubjectOptions.first : '';
+      _class = widget.classOptions.isNotEmpty ? widget.classOptions.first : '';
+      _room = _rooms.first;
+    }
+    
     _loadSubjectsForClass();
+    _loadTeachers();
   }
 
-  Future<void> _loadSubjectsForClass() async {
-    if (_class == null || _class!.isEmpty) return;
+  Future<void> _loadTeachers() async {
     try {
-      final allCourses = await ApiService.getCourses(className: _class);
-      if (allCourses is List) {
-        final courses = allCourses.map((e) {
-          final code = e['code']?.toString() ?? e['subject_code']?.toString() ?? '';
-          final name = e['subject_name']?.toString() ?? '';
-          return '$code - $name';
-        }).where((s) => s != ' - ').toSet().toList();
-        if (mounted) {
+      final data = await ApiService.getTeachers();
+      if (data is List) {
+        final teacherIds = <String, int>{};
+        for (final item in data) {
+          final id = int.tryParse((item['id'] ?? '').toString());
+          final name = (item['full_name'] ?? item['teacher_code'] ?? '').toString().trim();
+          final code = (item['teacher_code'] ?? '').toString().trim();
+          if (id != null && name.isNotEmpty) teacherIds['$name (#$code)'] = id;
+        }
+        if (mounted && teacherIds.isNotEmpty) {
           setState(() {
-            _localSubjectOptions = courses.isNotEmpty ? courses : widget.subjectOptions;
-            if (!_localSubjectOptions.contains(_subject)) {
-              _subject = _localSubjectOptions.isNotEmpty ? _localSubjectOptions.first : null;
+            _teacherIds
+              ..clear()
+              ..addAll(teacherIds);
+            _teacherOptions = teacherIds.keys.toList()..sort();
+            if (_teacherId != null) {
+              for (final entry in teacherIds.entries) {
+                if (entry.value == _teacherId) _teacher = entry.key;
+              }
             }
+            _teacher ??= _teacherOptions.first;
+            _teacherId ??= _teacherIds[_teacher];
           });
         }
       }
     } catch (_) {}
   }
 
+  Future<void> _loadSubjectsForClass() async {
+    final className = _class?.trim() ?? '';
+    final requestId = ++_subjectRequestId;
+    if (className.isEmpty) {
+      if (mounted) setState(() {
+        _localSubjectOptions = [];
+        _subject = null;
+        _isLoadingSubjects = false;
+      });
+      return;
+    }
+    if (mounted) setState(() {
+      _isLoadingSubjects = true;
+      _localSubjectOptions = [];
+    });
+    try {
+      final allCourses = await ApiService.getCourses(className: className);
+      if (allCourses is List) {
+        final courses = allCourses.map((e) {
+          final code = e['code']?.toString() ?? e['subject_code']?.toString() ?? '';
+          final name = e['name']?.toString() ?? e['subject_name']?.toString() ?? '';
+          return '$code - $name';
+        }).where((s) => s != ' - ').toSet().toList();
+        if (mounted && requestId == _subjectRequestId && _class?.trim() == className) {
+          setState(() {
+            _localSubjectOptions = courses;
+            if (!_localSubjectOptions.contains(_subject)) {
+              _subject = _localSubjectOptions.isNotEmpty ? _localSubjectOptions.first : null;
+            }
+            _isLoadingSubjects = false;
+          });
+        }
+      }
+    } catch (_) {
+      if (mounted && requestId == _subjectRequestId) {
+        setState(() {
+          _localSubjectOptions = [];
+          _subject = null;
+          _isLoadingSubjects = false;
+        });
+      }
+    }
+  }
+
   @override
   void dispose() {
-    _lecturerC.dispose();
     super.dispose();
   }
 
@@ -848,6 +1029,16 @@ class _CreateSessionDialogState extends State<_CreateSessionDialog> {
         _end = t;
       }
     });
+  }
+
+  String _displaySubject(String s) {
+    if (!s.contains(' - ')) return s;
+    final parts = s.split(' - ');
+    if (parts.length > 1) {
+      final name = parts.sublist(1).join(' - ').trim();
+      if (name.isNotEmpty) return name;
+    }
+    return parts.first.trim();
   }
 
   Widget _label(String s) => Padding(
@@ -883,15 +1074,40 @@ class _CreateSessionDialogState extends State<_CreateSessionDialog> {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
           ]),
           const SizedBox(height: 20),
+          _label('Lớp'),
+          DropdownButtonFormField<String>(
+            value: widget.classOptions.contains(_class) ? _class : null,
+            isExpanded: true,
+            decoration: _dec('Chọn lớp'),
+            items: widget.classOptions
+                .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                .toList(),
+            onChanged: (v) {
+              setState(() {
+                _class = v;
+                _subject = null;
+                _localSubjectOptions = [];
+              });
+              _loadSubjectsForClass();
+            },
+          ),
+          const SizedBox(height: 12),
           _label('Môn học'),
           DropdownButtonFormField<String>(
             value: _localSubjectOptions.contains(_subject) ? _subject : null,
             isExpanded: true,
-            decoration: _dec('Chọn môn học'),
+            decoration: _dec(_isLoadingSubjects
+                ? 'Đang tải môn học...'
+                : (_localSubjectOptions.isEmpty ? 'Lớp chưa có môn học' : 'Chọn môn học')),
             items: _localSubjectOptions
-                .map((s) => DropdownMenuItem(value: s, child: Text(s, overflow: TextOverflow.ellipsis)))
+                .map((s) => DropdownMenuItem(
+                      value: s, 
+                      child: Text(_displaySubject(s), overflow: TextOverflow.ellipsis)
+                    ))
                 .toList(),
-            onChanged: (v) => setState(() => _subject = v),
+            onChanged: _isLoadingSubjects || _localSubjectOptions.isEmpty
+                ? null
+                : (v) => setState(() => _subject = v),
           ),
           const SizedBox(height: 12),
           Row(children: [
@@ -899,18 +1115,25 @@ class _CreateSessionDialogState extends State<_CreateSessionDialog> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _label('Lớp'),
-                  DropdownButtonFormField<String>(
-                    value: widget.classOptions.contains(_class) ? _class : null,
-                    isExpanded: true,
-                    decoration: _dec('Chọn lớp'),
-                    items: widget.classOptions
-                        .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                        .toList(),
-                    onChanged: (v) {
-                      setState(() => _class = v);
-                      _loadSubjectsForClass();
-                    },
+                  _label('Ngày'),
+                  InkWell(
+                    onTap: _pickDate,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: const Color(0xFFE5E7EB)),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(children: [
+                        Text(
+                          '${_date.day.toString().padLeft(2, '0')}/${_date.month.toString().padLeft(2, '0')}/${_date.year}',
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                        ),
+                        const Spacer(),
+                        const Icon(Icons.calendar_today_rounded, size: 16, color: Color(0xFF6B7280)),
+                      ]),
+                    ),
                   ),
                 ],
               ),
@@ -934,27 +1157,6 @@ class _CreateSessionDialogState extends State<_CreateSessionDialog> {
               ),
             ),
           ]),
-          const SizedBox(height: 12),
-          _label('Ngày'),
-          InkWell(
-            onTap: _pickDate,
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-              decoration: BoxDecoration(
-                border: Border.all(color: const Color(0xFFE5E7EB)),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(children: [
-                Text(
-                  '${_date.day.toString().padLeft(2, '0')}/${_date.month.toString().padLeft(2, '0')}/${_date.year}',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                ),
-                const Spacer(),
-                const Icon(Icons.calendar_today_rounded, size: 16, color: Color(0xFF6B7280)),
-              ]),
-            ),
-          ),
           const SizedBox(height: 12),
           Row(children: [
             Expanded(
@@ -1015,9 +1217,17 @@ class _CreateSessionDialogState extends State<_CreateSessionDialog> {
           ]),
           const SizedBox(height: 12),
           _label('Giảng viên'),
-          TextField(
-            controller: _lecturerC,
-            decoration: _dec('Nhập tên giảng viên...'),
+          DropdownButtonFormField<String>(
+            value: _teacherOptions.contains(_teacher) ? _teacher : null,
+            isExpanded: true,
+            decoration: _dec('Chọn giảng viên'),
+            items: _teacherOptions
+                .map((t) => DropdownMenuItem(value: t, child: Text(t, overflow: TextOverflow.ellipsis)))
+                .toList(),
+            onChanged: (v) => setState(() {
+              _teacher = v;
+              _teacherId = v == null ? null : _teacherIds[v];
+            }),
           ),
           const SizedBox(height: 20),
           Row(children: [
@@ -1033,7 +1243,7 @@ class _CreateSessionDialogState extends State<_CreateSessionDialog> {
               flex: 2,
               child: ElevatedButton.icon(
                 onPressed: () {
-                  if (_subject == null || _class == null || _room == null) {
+                  if (_subject == null || _class == null || _room == null || _teacherId == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Vui lòng chọn đầy đủ thông tin'), backgroundColor: Color(0xFFEF4444)),
                     );
@@ -1047,7 +1257,8 @@ class _CreateSessionDialogState extends State<_CreateSessionDialog> {
                     'date': dateStr,
                     'start_time': '${_start.hour.toString().padLeft(2, '0')}:${_start.minute.toString().padLeft(2, '0')}',
                     'end_time': '${_end.hour.toString().padLeft(2, '0')}:${_end.minute.toString().padLeft(2, '0')}',
-                    'lecturer': _lecturerC.text.trim(),
+                    'lecturer': _teacher,
+                    'teacher_id': _teacherId,
                   });
                 },
                 icon: const Icon(Icons.add_rounded, size: 18),
@@ -1170,6 +1381,14 @@ class _SessionDetailSheetState extends State<_SessionDetailSheet> {
   Widget build(BuildContext context) {
     final session = _session;
     final students = _students;
+    final rawSessionDate = (session['session_date'] ?? session['date'] ?? '').toString();
+    final sessionDate = rawSessionDate.length >= 10 ? rawSessionDate.substring(0, 10) : rawSessionDate;
+    final sessionDateParts = sessionDate.split('-');
+    final sessionDay = sessionDateParts.length == 3 ? sessionDateParts[2] : '--';
+    final sessionMonth = sessionDateParts.length == 3 ? 'THG ${int.tryParse(sessionDateParts[1]) ?? sessionDateParts[1]}' : '';
+    final displaySessionDate = sessionDateParts.length == 3
+        ? '${sessionDateParts[2]}/${sessionDateParts[1]}/${sessionDateParts[0]}'
+        : sessionDate;
 
     int presentActual = students.where((s) => s['status'] == 'present').length;
     int absentActual = students.where((s) => s['status'] == 'absent').length;
@@ -1239,7 +1458,13 @@ class _SessionDetailSheetState extends State<_SessionDetailSheet> {
                           borderRadius: BorderRadius.circular(14),
                         ),
                         alignment: Alignment.center,
-                        child: const Icon(Icons.event_note_rounded, color: Colors.white, size: 28),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(sessionDay, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
+                            Text(sessionMonth, style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 9, fontWeight: FontWeight.w700)),
+                          ],
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -1247,13 +1472,17 @@ class _SessionDetailSheetState extends State<_SessionDetailSheet> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              session['subject']?.toString() ?? 'Buổi học',
+                              session['session_title']?.toString() ?? session['subject_name']?.toString() ?? 'Buổi điểm danh',
                               style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900),
                               overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              '${session['date'] ?? ''} • ${session['time'] ?? ''}',
+                              [
+                                displaySessionDate,
+                                if (session['start_time'] != null && session['end_time'] != null)
+                                  '${session['start_time']} - ${session['end_time']}',
+                              ].where((value) => value.isNotEmpty).join(' • '),
                               style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12, fontWeight: FontWeight.w600),
                             ),
                           ],
@@ -1502,26 +1731,45 @@ class _SessionDetailSheetState extends State<_SessionDetailSheet> {
                     Expanded(
                       flex: 2,
                       child: ElevatedButton.icon(
-                        onPressed: () {
-                          // Đồng bộ server
-                          setState(() {
-                            _session['present_count'] = presentActual;
-                            _session['absent_count'] = absentActual;
-                            _session['late_count'] = lateActual;
-                            _session['excused_count'] = excusedActual;
-                            _session['unmarked_count'] = unmarkedActual;
-                            _session['total_count'] = totalCount;
-                            _session['status'] = unmarkedActual > 0
-                                ? 'pending'
-                                : (absentActual > totalCount / 2 ? 'absent' : 'present');
-                          });
-                          Navigator.pop(context, _session);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Đã đồng bộ danh sách lên server'), backgroundColor: Color(0xFF10B981)),
-                          );
+                        onPressed: () async {
+                          // Lưu danh sách điểm danh lên server.
+                          try {
+                            final records = students.map((s) => {
+                              'student_id': s['id'] ?? s['student_id'],
+                              'status': s['status'] ?? 'unmarked',
+                              'note': s['note'] ?? ''
+                            }).toList();
+                            
+                            await ApiService.addAttendanceRecordsBulk({
+                              'sessionId': _session['id'],
+                              'records': records,
+                            });
+                            
+                            if (!mounted) return;
+                            setState(() {
+                              _session['present_count'] = presentActual;
+                              _session['absent_count'] = absentActual;
+                              _session['late_count'] = lateActual;
+                              _session['excused_count'] = excusedActual;
+                              _session['unmarked_count'] = unmarkedActual;
+                              _session['total_count'] = totalCount;
+                              _session['status'] = unmarkedActual > 0
+                                  ? 'pending'
+                                  : (absentActual > totalCount / 2 ? 'absent' : 'present');
+                            });
+                            Navigator.pop(context, _session);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Đã lưu buổi điểm danh'), backgroundColor: Color(0xFF10B981)),
+                            );
+                          } catch (e) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Lỗi lưu buổi điểm danh: $e'), backgroundColor: const Color(0xFFEF4444)),
+                            );
+                          }
                         },
-                        icon: const Icon(Icons.sync_rounded, size: 16),
-                        label: const Text('Đồng bộ dữ liệu'),
+                        icon: const Icon(Icons.save_rounded, size: 16),
+                        label: const Text('Lưu buổi điểm danh'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF3B82F6),
                           foregroundColor: Colors.white,
