@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../services/mock_data_service.dart';
+import '../services/api_service.dart';
 
 const String _kAllClasses = 'Tất cả lớp';
 
@@ -18,15 +18,16 @@ enum _FilterMode { all, study, exam }
 class _SchedulesScreenState extends State<SchedulesScreen> {
   List<Map<String, dynamic>> _studySchedules = [];
   List<Map<String, dynamic>> _examSchedules = [];
-  List<Map<String, dynamic>> _weekSummary = [];
   List<String> _classOptions = [];
   bool _isLoading = true;
+  DateTime _visibleMonth = DateTime(DateTime.now().year, DateTime.now().month);
 
   // Filter state
   String? _classFilter;
   _FilterMode _mode = _FilterMode.all;
 
   bool get _isStudent => widget.role == 'student';
+  bool get _canManageSchedules => widget.role == 'admin';
 
   @override
   void initState() {
@@ -36,7 +37,26 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
   }
 
   Future<void> _loadFilters() async {
-    final list = await MockDataService.getScheduleClasses();
+    List<String> list = [];
+    try {
+      final classes = await ApiService.getClasses();
+      list = classes
+          .map((c) => (c['name'] ?? c['class_name'] ?? '').toString().trim())
+          .where((c) => c.isNotEmpty)
+          .toSet()
+          .toList()..sort();
+    } catch (_) {}
+    try {
+      final schedules = await ApiService.getSchedules();
+      list.addAll(schedules.map((s) => (s['class_name'] ?? '').toString().trim()).where((c) => c.isNotEmpty));
+    } catch (_) {}
+    try {
+      final students = await ApiService.getStudents();
+      if (students is List) {
+        list.addAll(students.map((s) => (s['class_name'] ?? '').toString().trim()).where((c) => c.isNotEmpty));
+      }
+    } catch (_) {}
+    list = list.toSet().toList()..sort();
     final options = <String>[];
     if (!_isStudent) {
       // Admin/Teacher: thêm "Tất cả lớp" để xem toàn bộ
@@ -68,21 +88,37 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      // Tải tuần tự để _weekSummary có thể tính từ chính lịch thực tế
-      final study = await MockDataService.getSchedules(type: 'study', studentId: widget.studentId);
-      final exam = await MockDataService.getSchedules(type: 'exam', studentId: widget.studentId);
-      final week = await MockDataService.getScheduleWeekSummary(fromSchedules: study);
+      final results = await Future.wait([
+        ApiService.getSchedules(type: 'study'),
+        ApiService.getSchedules(type: 'exam'),
+      ]);
+      final study = results[0].map((s) => _normalizeSchedule(Map<String, dynamic>.from(s))).toList();
+      final exam = results[1].map((s) => _normalizeSchedule(Map<String, dynamic>.from(s))).toList();
       if (!mounted) return;
       setState(() {
         _studySchedules = study;
         _examSchedules = exam;
-        _weekSummary = week;
         _isLoading = false;
       });
     } catch (_) {
         if (!mounted) return;
       setState(() => _isLoading = false);
     }
+  }
+
+  Map<String, dynamic> _normalizeSchedule(Map<String, dynamic> row) {
+    final date = (row['schedule_date'] ?? row['date'] ?? '').toString();
+    final normalizedDate = date.length >= 10 ? date.substring(0, 10) : date;
+    DateTime? parsedDate;
+    try { parsedDate = DateTime.parse(normalizedDate); } catch (_) {}
+    const weekdays = ['', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+    return {
+      ...row,
+      'date': normalizedDate,
+      'time': row['schedule_time'] ?? row['time'] ?? '',
+      'subject_name': row['subject_name'] ?? row['title'] ?? '',
+      'day_of_week': parsedDate == null ? '' : weekdays[parsedDate.weekday],
+    };
   }
 
   // ===== Filter helpers =====
@@ -96,7 +132,8 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
     ];
     return list.where((s) {
       final filter = _classFilter ?? _kAllClasses;
-      if (!_isAllClasses(filter) && s['class_name'] != filter) return false;
+      final scheduleClass = (s['class_name'] ?? '').toString().trim().toLowerCase();
+      if (!_isAllClasses(filter) && scheduleClass != filter.trim().toLowerCase()) return false;
       if (_mode == _FilterMode.study && s['type'] != 'study') return false;
       if (_mode == _FilterMode.exam && s['type'] != 'exam') return false;
       return true;
@@ -107,13 +144,13 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
   List<Map<String, dynamic>> get _filteredStudy {
     final filter = _classFilter ?? _kAllClasses;
     return _studySchedules.where((s) =>
-        _isAllClasses(filter) || s['class_name'] == filter).toList();
+        _isAllClasses(filter) || (s['class_name'] ?? '').toString().trim().toLowerCase() == filter.trim().toLowerCase()).toList();
   }
 
   List<Map<String, dynamic>> get _filteredExam {
     final filter = _classFilter ?? _kAllClasses;
     return _examSchedules.where((s) =>
-        _isAllClasses(filter) || s['class_name'] == filter).toList();
+        _isAllClasses(filter) || (s['class_name'] ?? '').toString().trim().toLowerCase() == filter.trim().toLowerCase()).toList();
   }
 
   int get _countStudy => _filteredStudy.length;
@@ -129,23 +166,25 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
       appBar: _buildAppBar(),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : Column(
+          : SingleChildScrollView(
+              child: Column(
                 children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                  child: _buildWeekSummary(),
-                ),
-                _buildFilterBar(),
-                Expanded(child: _buildFilteredList()),
-              ],
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                    child: _buildMonthCalendar(),
+                  ),
+                  _buildFilterBar(),
+                  const SizedBox(height: 90),
+                ],
+              ),
             ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddDialog,
+      floatingActionButton: _canManageSchedules ? FloatingActionButton.extended(
+        onPressed: () => _showAddDialog(),
         backgroundColor: const Color(0xFF3B82F6),
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add_rounded),
         label: const Text('Thêm lịch', style: TextStyle(fontWeight: FontWeight.w800)),
-            ),
+            ) : null,
     );
   }
 
@@ -172,7 +211,7 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
               const Icon(Icons.calendar_today_rounded, size: 12, color: Colors.white70),
               const SizedBox(width: 6),
               Text(
-                'Tuần ${_getWeekNumber()} • $_countAll lịch (${_countStudy} học / $_countExam thi)',
+                'Tháng ${_visibleMonth.month}/${_visibleMonth.year} • $_countAll lịch (${_countStudy} học / $_countExam thi)',
                 style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600),
               ),
             ],
@@ -182,7 +221,21 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
     );
   }
 
-  Widget _buildWeekSummary() {
+  Widget _buildMonthCalendar() {
+    final firstDay = DateTime(_visibleMonth.year, _visibleMonth.month, 1);
+    final daysInMonth = DateTime(_visibleMonth.year, _visibleMonth.month + 1, 0).day;
+    final leading = firstDay.weekday - 1;
+    final cells = ((leading + daysInMonth + 6) ~/ 7) * 7;
+    final eventsByDay = <int, List<Map<String, dynamic>>>{};
+    for (final event in _filteredAll) {
+      DateTime? date;
+      try { date = DateTime.parse((event['date'] ?? '').toString()); } catch (_) {}
+      if (date != null && date.year == _visibleMonth.year && date.month == _visibleMonth.month) {
+        eventsByDay.putIfAbsent(date.day, () => []).add(event);
+      }
+    }
+    const weekDays = ['Hai', 'Ba', 'Tư', 'Năm', 'Sáu', 'Bảy', 'CN'];
+    final today = DateTime.now();
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -198,57 +251,115 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
       ),
       child: Column(
         children: [
-          Row(
-            children: [
-              const Icon(Icons.bar_chart_rounded, size: 18, color: Color(0xFF3B82F6)),
-              const SizedBox(width: 8),
-              const Text('Tổng quan tuần',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
-              const Spacer(),
-              Text(
-                '$_countAll buổi',
-                style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280), fontWeight: FontWeight.w700),
-              ),
-            ],
+          Row(children: [
+            IconButton(onPressed: () => setState(() => _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month - 1)), icon: const Icon(Icons.chevron_left_rounded)),
+            Expanded(child: Text('Tháng ${_visibleMonth.month}, ${_visibleMonth.year}', textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0284C7)))),
+            IconButton(onPressed: () => setState(() => _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month + 1)), icon: const Icon(Icons.chevron_right_rounded)),
+          ]),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 9),
+            decoration: BoxDecoration(color: const Color(0xFFF3F4F6), borderRadius: BorderRadius.circular(12)),
+            child: Row(children: weekDays.asMap().entries.map((entry) => Expanded(child: Text(entry.value,
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800,
+              color: entry.key == 6 ? const Color(0xFF0284C7) : const Color(0xFF374151))))).toList()),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: _weekSummary.map((d) {
-              final color = _dayColor(d['color'] as String);
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: Column(
-            children: [
-                      Text(d['day'] as String,
-                          style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280), fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 4),
-                      Container(
-                        height: 36,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: color.withOpacity(d['count'] == 0 ? 0.05 : 0.18),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: color.withOpacity(0.4)),
-                        ),
-                        child: Text(
-                          '${d['count']}',
-                          style: TextStyle(
-                            color: d['count'] == 0 ? const Color(0xFF9CA3AF) : color,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+          const SizedBox(height: 6),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 7, mainAxisExtent: 45),
+            itemCount: cells,
+            itemBuilder: (context, index) {
+              final day = index - leading + 1;
+              if (day < 1 || day > daysInMonth) return const SizedBox.shrink();
+              final events = eventsByDay[day] ?? const <Map<String, dynamic>>[];
+              final isSunday = index % 7 == 6;
+              final isToday = today.year == _visibleMonth.year && today.month == _visibleMonth.month && today.day == day;
+              return InkWell(
+                onTap: events.isEmpty
+                    ? null
+                    : () => _showDaySchedules(DateTime(_visibleMonth.year, _visibleMonth.month, day), events),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF3F4F6)))),
+                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Container(width: 27, height: 27, alignment: Alignment.center,
+                    decoration: isToday ? const BoxDecoration(color: Color(0xFF0284C7), shape: BoxShape.circle) : null,
+                    child: Text('$day', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800,
+                      color: isToday ? Colors.white : (isSunday ? const Color(0xFF0284C7) : const Color(0xFF111827))))),
+                  const SizedBox(height: 3),
+                  SizedBox(height: 7, child: Row(mainAxisAlignment: MainAxisAlignment.center,
+                    children: events.take(3).map((event) => Container(width: 6, height: 6,
+                      margin: const EdgeInsets.symmetric(horizontal: 1), decoration: BoxDecoration(shape: BoxShape.circle,
+                      color: event['type'] == 'exam' ? const Color(0xFFF59E0B) : const Color(0xFF22C55E)))).toList())),
+                  ]),
                 ),
               );
-            }).toList(),
+            },
+          ),
+          const SizedBox(height: 8),
+          const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(Icons.circle, size: 8, color: Color(0xFF22C55E)), SizedBox(width: 4), Text('Lịch học', style: TextStyle(fontSize: 11)),
+            SizedBox(width: 16), Icon(Icons.circle, size: 8, color: Color(0xFFF59E0B)), SizedBox(width: 4), Text('Lịch thi', style: TextStyle(fontSize: 11)),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showDaySchedules(DateTime date, List<Map<String, dynamic>> events) async {
+    final sortedEvents = [...events]
+      ..sort((a, b) => (a['time'] ?? '').toString().compareTo((b['time'] ?? '').toString()));
+    final selected = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: const Color(0xFFD1D5DB), borderRadius: BorderRadius.circular(2)))),
+              const SizedBox(height: 16),
+              Text(
+                'Lịch ngày ${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}',
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
               ),
+              const SizedBox(height: 12),
+              ...sortedEvents.map((event) {
+                final isExam = event['type'] == 'exam';
+                final color = isExam ? const Color(0xFFF59E0B) : const Color(0xFF22C55E);
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    onTap: () => Navigator.pop(context, event),
+                    leading: CircleAvatar(
+                      backgroundColor: color.withValues(alpha: 0.15),
+                      child: Icon(isExam ? Icons.assignment_rounded : Icons.school_rounded, color: color),
+                    ),
+                    title: Text((event['subject_name'] ?? event['title'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w800)),
+                    subtitle: Text([
+                      (event['time'] ?? '').toString(),
+                      'Lớp ${(event['class_name'] ?? '').toString()}',
+                      if ((event['room'] ?? '').toString().isNotEmpty) 'Phòng ${event['room']}',
+                    ].where((value) => value.isNotEmpty).join(' • ')),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                  ),
+                );
+              }),
             ],
           ),
+        ),
+      ),
     );
+    if (selected != null && mounted) _showScheduleDetail(selected);
   }
 
   // ===== Filter bar (sticky) =====
@@ -557,38 +668,74 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
     );
   }
 
-  void _showScheduleDetail(Map<String, dynamic> s) {
-    showModalBottomSheet(
+  void _showScheduleDetail(Map<String, dynamic> s) async {
+    final action = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => _ScheduleDetailSheet(schedule: s),
+      builder: (_) => _ScheduleDetailSheet(schedule: s, canManage: _canManageSchedules),
     );
+    if (!mounted || action == null) return;
+    if (action == 'edit') {
+      await _showAddDialog(initial: s);
+    } else if (action == 'delete') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Xóa lịch'),
+          content: Text('Bạn có chắc muốn xóa lịch ${s['subject_name'] ?? ''}?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),
+            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Xóa')),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+      try {
+        await ApiService.deleteSchedule((s['id'] as num).toInt());
+        await _loadData();
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã xóa lịch')));
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi xóa lịch: $e')));
+      }
+    }
   }
 
   // ===== Add dialog =====
 
-  Future<void> _showAddDialog() async {
+  Future<void> _showAddDialog({Map<String, dynamic>? initial}) async {
     final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const _AddScheduleSheet(),
+      builder: (_) => _AddScheduleSheet(initial: initial),
     );
     if (result == null || !mounted) return;
 
     try {
-      final created = await MockDataService.createSchedule(result);
-      setState(() {
-        if (created['type'] == 'exam') {
-          _examSchedules.add(created);
-        } else {
-          _studySchedules.add(created);
-        }
-      });
+      final payload = {
+        'type': result['type'],
+        'title': result['subject_name'],
+        'subject_name': result['subject_name'],
+        'subject_code': result['subject_code'],
+        'class_name': result['class_name'],
+        'schedule_date': result['date'],
+        'schedule_time': result['time'],
+        'room': result['room'],
+        'teacher_id': result['teacher_id'],
+        'exam_form': result['exam_form'],
+        'duration': result['duration'],
+        'note': result['note'],
+      };
+      if (initial == null) {
+        await ApiService.addSchedule(payload);
+      } else {
+        await ApiService.updateSchedule((initial['id'] as num).toInt(), payload);
+      }
+      await _loadData();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Đã thêm ${created['type'] == 'exam' ? 'lịch thi' : 'lịch học'}: ${created['subject_name']}'),
+          content: Text('${initial == null ? 'Đã thêm' : 'Đã cập nhật'} ${result['type'] == 'exam' ? 'lịch thi' : 'lịch học'}: ${result['subject_name']}'),
           backgroundColor: const Color(0xFF10B981),
         ),
       );
@@ -633,7 +780,8 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
 // ============ Add schedule bottom sheet ============
 
 class _AddScheduleSheet extends StatefulWidget {
-  const _AddScheduleSheet();
+  final Map<String, dynamic>? initial;
+  const _AddScheduleSheet({this.initial});
 
   @override
   State<_AddScheduleSheet> createState() => _AddScheduleSheetState();
@@ -645,6 +793,8 @@ class _AddScheduleSheetState extends State<_AddScheduleSheet> {
   String? _class;
   String? _room;
   String? _examForm;
+  String? _teacherLabel;
+  int? _teacherId;
   String _duration = '90';
   String _note = '';
   DateTime _date = DateTime.now();
@@ -655,31 +805,135 @@ class _AddScheduleSheetState extends State<_AddScheduleSheet> {
   List<String> _classes = [];
   List<String> _rooms = [];
   List<String> _examForms = [];
+  List<String> _teacherLabels = [];
+  final Map<String, int> _teacherIds = {};
+  bool _isLoadingOptions = true;
+  bool _isLoadingSubjects = false;
+  int _subjectRequestId = 0;
 
   @override
   void initState() {
     super.initState();
+    final initial = widget.initial;
+    if (initial != null) {
+      _type = (initial['type'] ?? 'study').toString();
+      _class = initial['class_name']?.toString();
+      _room = initial['room']?.toString();
+      _examForm = initial['exam_form']?.toString();
+      _teacherId = int.tryParse((initial['teacher_id'] ?? '').toString());
+      _duration = (initial['duration'] ?? 90).toString();
+      _note = initial['note']?.toString() ?? '';
+      final code = initial['subject_code']?.toString() ?? '';
+      final name = initial['subject_name']?.toString() ?? '';
+      _subject = '$code - $name';
+      try { _date = DateTime.parse((initial['date'] ?? initial['schedule_date']).toString()); } catch (_) {}
+      final times = (initial['time'] ?? initial['schedule_time'] ?? '').toString().split(' - ');
+      if (times.isNotEmpty) _start = _parseTime(times[0], _start);
+      if (times.length > 1) _end = _parseTime(times[1], _end);
+    }
     _loadOptions();
   }
 
+  TimeOfDay _parseTime(String value, TimeOfDay fallback) {
+    final parts = value.trim().split(':');
+    if (parts.length < 2) return fallback;
+    return TimeOfDay(hour: int.tryParse(parts[0]) ?? fallback.hour, minute: int.tryParse(parts[1]) ?? fallback.minute);
+  }
+
   Future<void> _loadOptions() async {
-    final results = await Future.wait([
-      MockDataService.getScheduleSubjects(),
-      MockDataService.getScheduleClasses(),
-      MockDataService.getScheduleRooms(),
-      MockDataService.getScheduleExamForms(),
-    ]);
+    List classes = [];
+    List schedules = [];
+    List attendanceSessions = [];
+    List teachers = [];
+    try { classes = await ApiService.getClasses(); } catch (_) {}
+    if (classes.isEmpty) {
+      try {
+        final students = await ApiService.getStudents();
+        if (students is List) {
+          classes = students
+              .map((s) => {'name': s['class_name']})
+              .where((c) => (c['name'] ?? '').toString().isNotEmpty)
+              .toList();
+        }
+      } catch (_) {}
+    }
+    try { schedules = await ApiService.getSchedules(); } catch (_) {}
+    try { attendanceSessions = await ApiService.getAttendanceSessions(); } catch (_) {}
+    try { teachers = await ApiService.getTeachers(); } catch (_) {}
     if (!mounted) return;
     setState(() {
-      _subjects = results[0];
-      _classes = (results[1] as List<String>).where((c) => c != 'Tất cả lớp').toList();
-      _rooms = results[2];
-      _examForms = results[3];
+      _classes = classes
+          .map((c) => (c['name'] ?? c['class_name'] ?? '').toString())
+          .where((c) => c.isNotEmpty)
+          .toSet().toList();
+      _rooms = schedules
+          .map((s) => (s['room'] ?? '').toString())
+          .followedBy(attendanceSessions.map((s) => (s['room'] ?? '').toString()))
+          .where((room) => room.isNotEmpty)
+          .toSet().toList();
+      _examForms = schedules
+          .map((s) => (s['exam_form'] ?? '').toString())
+          .where((form) => form.isNotEmpty)
+          .toSet().toList();
+      _teacherIds.clear();
+      for (final teacher in teachers) {
+        final teacherId = int.tryParse((teacher['id'] ?? '').toString());
+        final name = (teacher['full_name'] ?? teacher['teacher_code'] ?? '').toString().trim();
+        if (teacherId != null && name.isNotEmpty) _teacherIds['$name (#${teacher['teacher_code']})'] = teacherId;
+      }
+      _teacherLabels = _teacherIds.keys.toList()..sort();
+      if (_teacherId != null) {
+        for (final entry in _teacherIds.entries) {
+          if (entry.value == _teacherId) _teacherLabel = entry.key;
+        }
+      }
+      _teacherLabel ??= _teacherLabels.isNotEmpty ? _teacherLabels.first : null;
+      _teacherId ??= _teacherLabel == null ? null : _teacherIds[_teacherLabel];
       _subject ??= _subjects.isNotEmpty ? _subjects.first : null;
       _class ??= _classes.isNotEmpty ? _classes.first : null;
       _room ??= _rooms.isNotEmpty ? _rooms.first : null;
       _examForm ??= _examForms.isNotEmpty ? _examForms.first : null;
+      _isLoadingOptions = false;
     });
+    await _loadSubjectsForClass();
+  }
+
+  Future<void> _loadSubjectsForClass() async {
+    final selectedClass = _class?.trim() ?? '';
+    final previousSubject = _subject;
+    final requestId = ++_subjectRequestId;
+    setState(() {
+      _subjects = [];
+      _subject = null;
+      _isLoadingSubjects = true;
+    });
+    if (selectedClass.isEmpty) {
+      setState(() => _isLoadingSubjects = false);
+      return;
+    }
+    try {
+      final courses = await ApiService.getCourses(className: selectedClass);
+      if (!mounted || requestId != _subjectRequestId || _class?.trim() != selectedClass) return;
+      final subjects = courses.map((course) {
+          final code = (course['code'] ?? course['subject_code'] ?? '').toString();
+          final name = (course['name'] ?? course['subject_name'] ?? '').toString();
+          return '$code - $name';
+        })
+        .where((subject) => subject != ' - ')
+        .toSet()
+        .toList();
+      setState(() {
+        _subjects = subjects;
+        _subject = previousSubject != null && subjects.contains(previousSubject)
+            ? previousSubject
+            : (subjects.isNotEmpty ? subjects.first : null);
+        _isLoadingSubjects = false;
+      });
+    } catch (_) {
+      if (mounted && requestId == _subjectRequestId) {
+        setState(() => _isLoadingSubjects = false);
+      }
+    }
   }
 
   Future<void> _pickDate() async {
@@ -711,7 +965,7 @@ class _AddScheduleSheetState extends State<_AddScheduleSheet> {
   }
 
   void _save() {
-    if (_subject == null || _class == null || _room == null) {
+    if (_subject == null || _class == null || _room == null || _teacherId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Vui lòng chọn đầy đủ thông tin'), backgroundColor: Color(0xFFEF4444)),
       );
@@ -730,6 +984,7 @@ class _AddScheduleSheetState extends State<_AddScheduleSheet> {
       'date': dateStr,
       'time': timeStr,
       'room': _room,
+      'teacher_id': _teacherId,
       'exam_form': _type == 'exam' ? _examForm : null,
       'duration': _type == 'exam' ? int.tryParse(_duration) : null,
       'note': _note,
@@ -790,8 +1045,10 @@ class _AddScheduleSheetState extends State<_AddScheduleSheet> {
                   child: _dropdown(
                     value: _subject,
                     items: _subjects,
-                    hint: 'Chọn môn học',
-                    onChanged: (v) => setState(() => _subject = v),
+                    hint: _isLoadingSubjects
+                        ? 'Đang tải môn học...'
+                        : (_subjects.isEmpty ? 'Lớp chưa có môn học' : 'Chọn môn học'),
+                    onChanged: _isLoadingSubjects ? null : (v) => setState(() => _subject = v),
                   ),
                 ),
                 _field(
@@ -801,7 +1058,10 @@ class _AddScheduleSheetState extends State<_AddScheduleSheet> {
                     value: _class,
                     items: _classes,
                     hint: 'Chọn lớp',
-                    onChanged: (v) => setState(() => _class = v),
+                    onChanged: (v) {
+                      setState(() => _class = v);
+                      _loadSubjectsForClass();
+                    },
                   ),
                 ),
                 _field(
@@ -847,23 +1107,52 @@ class _AddScheduleSheetState extends State<_AddScheduleSheet> {
                 _field(
                   label: 'Phòng',
                   icon: Icons.room_rounded,
+                  child: _rooms.isNotEmpty
+                      ? _dropdown(
+                          value: _room,
+                          items: _rooms,
+                          hint: 'Chọn phòng',
+                          onChanged: (v) => setState(() => _room = v),
+                        )
+                      : TextField(
+                          decoration: InputDecoration(
+                            hintText: _isLoadingOptions ? 'Đang tải phòng...' : 'Nhập phòng học',
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onChanged: (value) => _room = value.trim(),
+                        ),
+                ),
+                _field(
+                  label: 'Giáo viên phụ trách',
+                  icon: Icons.person_rounded,
                   child: _dropdown(
-                    value: _room,
-                    items: _rooms,
-                    hint: 'Chọn phòng',
-                    onChanged: (v) => setState(() => _room = v),
+                    value: _teacherLabel,
+                    items: _teacherLabels,
+                    hint: _teacherLabels.isEmpty ? 'Chưa có tài khoản giáo viên' : 'Chọn giáo viên',
+                    onChanged: (value) => setState(() {
+                      _teacherLabel = value;
+                      _teacherId = value == null ? null : _teacherIds[value];
+                    }),
                   ),
                 ),
                 if (isExam) ...[
                   _field(
                     label: 'Hình thức thi',
                     icon: Icons.assignment_turned_in_rounded,
-                    child: _dropdown(
-                      value: _examForm,
-                      items: _examForms,
-                      hint: 'Chọn hình thức',
-                      onChanged: (v) => setState(() => _examForm = v),
-                    ),
+                    child: _examForms.isNotEmpty
+                        ? _dropdown(
+                            value: _examForm,
+                            items: _examForms,
+                            hint: 'Chọn hình thức',
+                            onChanged: (v) => setState(() => _examForm = v),
+                          )
+                        : TextField(
+                            decoration: InputDecoration(
+                              hintText: _isLoadingOptions ? 'Đang tải...' : 'Nhập hình thức thi',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            onChanged: (value) => _examForm = value.trim(),
+                          ),
                   ),
                   _field(
                     label: 'Thời lượng (phút)',
@@ -980,7 +1269,7 @@ class _AddScheduleSheetState extends State<_AddScheduleSheet> {
     required String? value,
     required List<String> items,
     required String hint,
-    required ValueChanged<String?> onChanged,
+    required ValueChanged<String?>? onChanged,
   }) {
     // Loại bỏ trùng lặp bằng Set để tránh lỗi "exactly one item with value"
     final uniqueItems = items.toSet().toList();
@@ -1036,7 +1325,8 @@ class _AddScheduleSheetState extends State<_AddScheduleSheet> {
 
 class _ScheduleDetailSheet extends StatelessWidget {
   final Map<String, dynamic> schedule;
-  const _ScheduleDetailSheet({required this.schedule});
+  final bool canManage;
+  const _ScheduleDetailSheet({required this.schedule, required this.canManage});
 
   @override
   Widget build(BuildContext context) {
@@ -1050,6 +1340,7 @@ class _ScheduleDetailSheet extends StatelessWidget {
     final dayOfWeek = schedule['day_of_week']?.toString() ?? '';
     final time = schedule['time']?.toString() ?? '';
     final room = schedule['room']?.toString() ?? '';
+    final teacherName = schedule['teacher_name']?.toString() ?? '';
     final examForm = schedule['exam_form']?.toString();
     final duration = schedule['duration'];
     final note = schedule['note']?.toString() ?? '';
@@ -1165,6 +1456,10 @@ class _ScheduleDetailSheet extends StatelessWidget {
                       Expanded(child: _infoBox(Icons.access_time_rounded, 'Giờ', time, color)),
                     ],
                   ),
+                  if (teacherName.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    _infoBox(Icons.person_rounded, 'Giáo viên phụ trách', teacherName, color),
+                  ],
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -1226,7 +1521,7 @@ class _ScheduleDetailSheet extends StatelessWidget {
                 ],
               ),
             ),
-            SafeArea(
+            if (canManage) SafeArea(
               top: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -1234,19 +1529,14 @@ class _ScheduleDetailSheet extends StatelessWidget {
                   children: [
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Đã xuất lịch'), backgroundColor: Color(0xFF10B981)),
-                          );
-                        },
-                        icon: const Icon(Icons.share_rounded, size: 16),
-                        label: const Text('Chia sẻ'),
+                        onPressed: () => Navigator.pop(context, 'delete'),
+                        icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                        label: const Text('Xóa'),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           side: const BorderSide(color: Color(0xFFE5E7EB)),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          foregroundColor: const Color(0xFF374151),
+                          foregroundColor: const Color(0xFFEF4444),
                         ),
                       ),
                     ),
@@ -1254,15 +1544,7 @@ class _ScheduleDetailSheet extends StatelessWidget {
                     Expanded(
                       flex: 2,
                       child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Đã mở form chỉnh sửa: $subjectName'),
-                              backgroundColor: color,
-                            ),
-                          );
-                        },
+                        onPressed: () => Navigator.pop(context, 'edit'),
                         icon: const Icon(Icons.edit_rounded, size: 16),
                         label: const Text('Chỉnh sửa'),
                         style: ElevatedButton.styleFrom(
