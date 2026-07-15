@@ -84,18 +84,6 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
       debugPrint('Error loading teacher departments: $e');
     }
 
-    // Also read faculties directly from classes. This keeps the dropdown
-    // complete when an older backend deployment returns only teacher data.
-    try {
-      final classes = await ApiService.getClasses();
-      for (final classItem in classes) {
-        final faculty = (classItem['faculty'] ?? '').toString().trim();
-        if (faculty.isNotEmpty) departments.add(faculty);
-      }
-    } catch (e) {
-      debugPrint('Error loading faculties from classes: $e');
-    }
-
     try {
       final data = await ApiService.getTeachers();
       if (!mounted) return;
