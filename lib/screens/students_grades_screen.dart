@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'grades_screen.dart';
+import 'grades_display_screen.dart';
 
 /// Màn "Quản lý điểm" dạng bảng admin (giống [GradesScreen]).
 ///
@@ -20,6 +21,9 @@ class StudentsGradesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const GradesScreen();
+    if (role == 'student' && studentId != null) {
+      return GradesDisplayScreen(studentId: studentId!, studentName: studentName ?? 'Sinh viên');
+    }
+    return GradesScreen(studentId: studentId, studentName: studentName, role: role);
   }
 }

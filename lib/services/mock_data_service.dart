@@ -559,8 +559,9 @@ class MockDataService {
 
     List<Map<String, dynamic>> subjects = allCoursesRaw.map((e) {
       return {
+        'course_id': e['id'] ?? e['course_id'],
         'subject_code': e['code']?.toString() ?? e['subject_code']?.toString() ?? '',
-        'subject_name': e['subject_name']?.toString() ?? '',
+        'subject_name': e['subject_name']?.toString() ?? e['name']?.toString() ?? '',
         'class_name': e['class_name']?.toString() ?? '',
         'credits': e['credits'] ?? 3,
         'semester_id': e['semester_id'],
@@ -578,18 +579,38 @@ class MockDataService {
       allGradesRaw = await ApiService.getGrades(className: className, semesterId: semesterId);
     } catch (_) {}
     
-    Map<String, Map<String, dynamic>> gradesMap = {};
+    final gradesMap = <String, Map<String, dynamic>>{};
+    final list = <Map<String, dynamic>>[];
     for (var g in allGradesRaw) {
       final sId = g['student_id'];
-      final semId = g['semester_id'];
+      final semId = g['resolved_semester_id'] ?? g['semester_id'];
+      final courseId = g['course_id'];
       final subCode = g['subject_code']?.toString() ?? g['code']?.toString() ?? '';
+      if (subjectCode != null && subjectCode.isNotEmpty && subCode != subjectCode) continue;
+
+      final gradeRow = Map<String, dynamic>.from(g);
+      gradeRow.addAll({
+        'semester_id': semId,
+        'subject_code': subCode,
+        'subject_name': g['subject_name'] ?? '',
+        'cc_score': g['cc_score'] ?? g['attendance_score'],
+        'qkt_score': g['qkt_score'] ?? g['midterm_score'],
+        'ckt_score': g['ckt_score'] ?? g['final_score'],
+        'total_score': g['total_score'] ?? g['average_score'],
+        'note': g['note'] ?? '',
+        '_isPersisted': true,
+      });
+      list.add(gradeRow);
+
+      if (sId != null && courseId != null) {
+        gradesMap['course_${sId}_$courseId'] = gradeRow;
+      }
       if (sId != null && semId != null && subCode.isNotEmpty) {
-        gradesMap['${sId}_${semId}_$subCode'] = Map<String, dynamic>.from(g);
+        gradesMap['${sId}_${semId}_$subCode'] = gradeRow;
       }
     }
 
-    // 4. Cross Join
-    final list = <Map<String, dynamic>>[];
+    // 4. Bổ sung các tổ hợp sinh viên - môn học chưa có điểm.
     int rowId = 1;
     for (final s in filteredStudents) {
       for (final sub in subjects) {
@@ -597,15 +618,17 @@ class MockDataService {
 
         final sId = s['student_id'] ?? s['id'];
         final semId = sub['semester_id'] ?? 0;
+        final courseId = sub['course_id'];
         final subCode = sub['subject_code'] ?? '';
         final key = '${sId}_${semId}_$subCode';
         
-        Map<String, dynamic>? saved = gradesMap[key];
+        Map<String, dynamic>? saved = courseId == null ? null : gradesMap['course_${sId}_$courseId'];
+        saved ??= gradesMap[key];
+        if (saved != null) continue;
         final localSaved = _gradeStorage[key];
-        saved = localSaved ?? saved;
 
         list.add({
-          'id': rowId++,
+          'id': 'new_${rowId++}',
           'student_id': sId,
           'student_code': s['student_code'] ?? s['code'],
           'full_name': s['full_name'] ?? s['name'],
@@ -615,13 +638,14 @@ class MockDataService {
           'credits': sub['credits'],
           'semester_id': semId,
           'semester_name': sub['semester_name'],
-          'cc_score': saved?['cc_score'],
-          'qkt_score': saved?['qkt_score'],
-          'ckt_score': saved?['ckt_score'],
-          'total_score': saved?['total_score'],
-          'grade': saved?['grade'],
-          'status': saved?['status'],
-          'note': saved?['note'] ?? '',
+          'course_id': courseId,
+          'cc_score': localSaved?['cc_score'],
+          'qkt_score': localSaved?['qkt_score'],
+          'ckt_score': localSaved?['ckt_score'],
+          'total_score': localSaved?['total_score'],
+          'grade': localSaved?['grade'],
+          'status': localSaved?['status'],
+          'note': localSaved?['note'] ?? '',
           '_key': key,
         });
       }
@@ -642,6 +666,7 @@ class MockDataService {
   /// Thêm / cập nhật một điểm vào storage.
   static Future<Map<String, dynamic>> saveGrade({
     required int studentId,
+    required int courseId,
     required int semesterId,
     required String subjectCode,
     required double ccScore,
@@ -665,20 +690,18 @@ class MockDataService {
       'note': note ?? '',
     };
 
-    try {
-      await ApiService.addGrade({
-        'student_id': studentId,
-        'semester_id': semesterId,
-        'subject_code': subjectCode,
-        'cc_score': ccScore,
-        'qkt_score': qktScore,
-        'ckt_score': cktScore,
-        'total_score': total,
-        'grade': grade,
-        'status': status,
-        'note': note ?? '',
-      });
-    } catch (_) {}
+    await ApiService.addGrade({
+      'student_id': studentId,
+      'course_id': courseId,
+      'semester_id': semesterId,
+      'cc_score': ccScore,
+      'qkt_score': qktScore,
+      'ckt_score': cktScore,
+      'total_score': total,
+      'grade': grade,
+      'status': status,
+      'note': note ?? '',
+    });
 
     return _gradeStorage[key]!;
   }

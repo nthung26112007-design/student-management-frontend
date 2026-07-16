@@ -1,14 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/language_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_service.dart';
 import 'account_screen.dart';
+import 'settings_screen.dart';
+import 'analytics_screen.dart';
+import 'reports_screen.dart';
 import 'attendance_screen.dart';
 import 'schedules_screen.dart';
 import 'grades_screen.dart';
+import 'grades_display_screen.dart';
 import 'students_grades_screen.dart';
 import 'students_screen.dart';
 import 'teacher_management_screen.dart';
+import 'class_management_screen.dart';
 import 'tuition_screen.dart';
 import 'curriculum_screen.dart';
 
@@ -22,6 +29,7 @@ class AdminDashboardScreen extends StatefulWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   String _role = '';
   String _username = '';
+  String _email = '';
   bool _isLoading = true;
   int? _studentId;
 
@@ -53,6 +61,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     setState(() {
       _role = prefs.getString('role') ?? '';
       _username = prefs.getString('full_name') ?? prefs.getString('username') ?? 'Admin';
+      _email = prefs.getString('email') ?? '';
       _studentId = prefs.getInt('student_id');
       _isLoading = false;
     });
@@ -177,19 +186,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              color: const Color(0xFFF3F4F6),
               borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF6366F1).withOpacity(0.25),
-                  blurRadius: 16,
-                  offset: const Offset(0, 8),
-                ),
-              ],
             ),
             child: Row(
               children: [
@@ -205,20 +203,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     children: [
                       Text(
                         'Xin chào, $_username!',
-                        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
+                        style: const TextStyle(
+                          color: Color(0xFF1F2937),
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       const Text(
                         'Chào mừng bạn đến với hệ thống quản lý sinh viên',
-                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                        style: TextStyle(color: Color(0xFF6B7280), fontSize: 13),
                       ),
                     ],
                   ),
-                ),
-                IconButton(
-                  onPressed: _loadDashboardData,
-                  icon: const Icon(Icons.refresh, color: Colors.white),
-                  tooltip: 'Làm mới',
                 ),
               ],
             ),
@@ -714,6 +711,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         return const StudentsScreen(embedded: true);
       case 'teachers':
         return const TeacherManagementScreen(embedded: true);
+      case 'classes':
+        return const ClassManagementScreen(embedded: true);
       case 'curriculum':
         return CurriculumScreen(role: _role, embedded: true);
       case 'grades':
@@ -740,21 +739,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             },
           );
         }
-        return GradesScreen(
+        return GradesDisplayScreen(
           studentId: _studentId!,
           studentName: _username,
-          role: _role,
         );
       case 'attendance':
-        return const AttendanceScreen();
+        return AttendanceScreen(role: _role, studentId: _studentId);
       case 'tuition':
         return TuitionScreen(role: _role, studentId: _studentId);
       case 'schedules':
-        return const SchedulesScreen();
+        return SchedulesScreen(role: _role, studentId: _studentId);
       case 'analytics':
-        return _buildAnalyticsPage();
+        return const AnalyticsScreen();
       case 'reports':
-        return _buildReportsPage();
+        return const ReportsScreen();
       case 'profile':
         return AccountScreen(
           profile: {
@@ -771,133 +769,90 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             'role': _role,
           },
         );
+      case 'settings':
+        return const SettingsScreen();
       default:
         return _buildDashboardPage();
     }
   }
 
-  Widget _buildAnalyticsPage() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: const Color(0xFF6366F1).withOpacity(0.10),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.bar_chart_rounded, size: 48, color: Color(0xFF6366F1)),
-            ),
-            const SizedBox(height: 16),
-            const Text('Phân tích & Thống kê', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
-            Text('Module đang được phát triển. Vui lòng quay lại sau.',
-                style: TextStyle(color: Colors.grey.shade600)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildReportsPage() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF59E0B).withOpacity(0.10),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.assessment_rounded, size: 48, color: Color(0xFFF59E0B)),
-            ),
-            const SizedBox(height: 16),
-            const Text('Báo cáo', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
-            Text('Module đang được phát triển. Vui lòng quay lại sau.',
-                style: TextStyle(color: Colors.grey.shade600)),
-          ],
-        ),
-      ),
-    );
-  }
-
   String _getRoleLabel() {
+    final language = context.watch<LanguageService>();
     switch (_role) {
       case 'admin':
-        return 'Quản trị viên';
+        return language.text('Quản trị viên', 'Administrator');
       case 'teacher':
-        return 'Giáo viên';
+        return language.text('Giáo viên', 'Teacher');
       case 'student':
-        return 'Sinh viên';
+        return language.text('Sinh viên', 'Student');
       default:
-        return 'Người dùng';
+        return language.text('Người dùng', 'User');
     }
   }
 
   List<_NavGroup> _getNavItems() {
+    final language = context.watch<LanguageService>();
+    String t(String vi, String en) => language.text(vi, en);
     if (_role == 'teacher') {
-      return const [
-        _NavGroup('TỔNG QUAN', [
-          _NavItem('dashboard', Icons.dashboard_rounded, 'Tổng quan', 'overview'),
+      return [
+        _NavGroup(t('TỔNG QUAN', 'OVERVIEW'), [
+          _NavItem('dashboard', Icons.dashboard_rounded, t('Tổng quan', 'Dashboard'), 'overview'),
         ]),
-        _NavGroup('GIẢNG DẠY', [
-          _NavItem('curriculum', Icons.school_rounded, 'Chương trình khung', 'teaching'),
-          _NavItem('grades', Icons.grading_rounded, 'Nhập điểm', 'teaching'),
-          _NavItem('attendance', Icons.event_available_rounded, 'Điểm danh', 'teaching'),
+        _NavGroup(t('GIẢNG DẠY', 'TEACHING'), [
+          _NavItem('curriculum', Icons.school_rounded, t('Chương trình khung', 'Curriculum'), 'teaching'),
+          _NavItem('grades', Icons.grading_rounded, t('Nhập điểm', 'Grade entry'), 'teaching'),
+          _NavItem('attendance', Icons.event_available_rounded, t('Điểm danh', 'Attendance'), 'teaching'),
         ]),
-        _NavGroup('THỜI KHÓA BIỂU', [
-          _NavItem('schedules', Icons.event_rounded, 'Lịch giảng dạy', 'schedule'),
+        _NavGroup(t('THỜI KHÓA BIỂU', 'SCHEDULE'), [
+          _NavItem('schedules', Icons.event_rounded, t('Lịch giảng dạy', 'Teaching schedule'), 'schedule'),
         ]),
-        _NavGroup('HỆ THỐNG', [
-          _NavItem('profile', Icons.person_rounded, 'Thông tin cá nhân', 'system'),
+        _NavGroup(t('HỆ THỐNG', 'SYSTEM'), [
+          _NavItem('profile', Icons.person_rounded, t('Thông tin cá nhân', 'Personal information'), 'system'),
+          _NavItem('settings', Icons.settings_rounded, t('Cài đặt', 'Settings'), 'system'),
         ]),
       ];
     }
     if (_role == 'student') {
-      return const [
-        _NavGroup('TỔNG QUAN', [
-          _NavItem('dashboard', Icons.dashboard_rounded, 'Tổng quan', 'overview'),
+      return [
+        _NavGroup(t('TỔNG QUAN', 'OVERVIEW'), [
+          _NavItem('dashboard', Icons.dashboard_rounded, t('Tổng quan', 'Dashboard'), 'overview'),
         ]),
-        _NavGroup('HỌC TẬP', [
-          _NavItem('curriculum', Icons.school_rounded, 'Chương trình khung', 'study'),
-          _NavItem('my-grades', Icons.grading_rounded, 'Kỳ thi / KQHT', 'study'),
+        _NavGroup(t('HỌC TẬP', 'STUDY'), [
+          _NavItem('curriculum', Icons.school_rounded, t('Chương trình khung', 'Curriculum'), 'study'),
+          _NavItem('my-grades', Icons.grading_rounded, t('Điểm cá nhân', 'My grades'), 'study'),
         ]),
-        _NavGroup('TÀI CHÍNH & LỊCH', [
-          _NavItem('tuition', Icons.account_balance_wallet_rounded, 'Học phí của tôi', 'finance'),
-          _NavItem('schedules', Icons.event_rounded, 'Lịch học / thi', 'finance'),
+        _NavGroup(t('TÀI CHÍNH & LỊCH', 'FINANCE & SCHEDULE'), [
+          _NavItem('tuition', Icons.account_balance_wallet_rounded, t('Học phí của tôi', 'My tuition'), 'finance'),
+          _NavItem('schedules', Icons.event_rounded, t('Lịch học / thi', 'Study / exam schedule'), 'finance'),
         ]),
-        _NavGroup('HỆ THỐNG', [
-          _NavItem('profile', Icons.person_rounded, 'Thông tin cá nhân', 'system'),
+        _NavGroup(t('HỆ THỐNG', 'SYSTEM'), [
+          _NavItem('profile', Icons.person_rounded, t('Thông tin cá nhân', 'Personal information'), 'system'),
+          _NavItem('settings', Icons.settings_rounded, t('Cài đặt', 'Settings'), 'system'),
         ]),
       ];
     }
     // admin
-    return const [
-      _NavGroup('TỔNG QUAN', [
-        _NavItem('dashboard', Icons.dashboard_rounded, 'Tổng quan', 'overview'),
+    return [
+      _NavGroup(t('TỔNG QUAN', 'OVERVIEW'), [
+        _NavItem('dashboard', Icons.dashboard_rounded, t('Tổng quan', 'Dashboard'), 'overview'),
       ]),
-      _NavGroup('QUẢN LÝ', [
-        _NavItem('students', Icons.people_alt_rounded, 'Quản lý sinh viên', 'manage'),
-        _NavItem('teachers', Icons.badge, 'Quản lý giáo viên', 'manage'),
-        _NavItem('curriculum', Icons.school_rounded, 'Chương trình khung', 'manage'),
-        _NavItem('grades', Icons.grading_rounded, 'Quản lý điểm', 'manage'),
-        _NavItem('attendance', Icons.event_available_rounded, 'Điểm danh', 'manage'),
-        _NavItem('tuition', Icons.account_balance_wallet_rounded, 'Học phí', 'manage'),
+      _NavGroup(t('QUẢN LÝ', 'MANAGEMENT'), [
+        _NavItem('students', Icons.people_alt_rounded, t('Quản lý sinh viên', 'Student management'), 'manage'),
+        _NavItem('teachers', Icons.badge, t('Quản lý giáo viên', 'Teacher management'), 'manage'),
+        _NavItem('classes', Icons.class_, t('Quản lý lớp học', 'Class management'), 'manage'),
+        _NavItem('curriculum', Icons.school_rounded, t('Chương trình khung', 'Curriculum'), 'manage'),
+        _NavItem('grades', Icons.grading_rounded, t('Quản lý điểm', 'Grade management'), 'manage'),
+        _NavItem('attendance', Icons.event_available_rounded, t('Điểm danh', 'Attendance'), 'manage'),
+        _NavItem('tuition', Icons.account_balance_wallet_rounded, t('Học phí', 'Tuition'), 'manage'),
       ]),
-      _NavGroup('PHÂN TÍCH', [
-        _NavItem('analytics', Icons.bar_chart_rounded, 'Thống kê', 'analytics'),
-        _NavItem('reports', Icons.assessment_rounded, 'Báo cáo', 'analytics'),
+      _NavGroup(t('PHÂN TÍCH', 'ANALYTICS'), [
+        _NavItem('analytics', Icons.bar_chart_rounded, t('Thống kê', 'Statistics'), 'analytics'),
+        _NavItem('reports', Icons.assessment_rounded, t('Báo cáo', 'Reports'), 'analytics'),
       ]),
-      _NavGroup('HỆ THỐNG', [
-        _NavItem('schedules', Icons.event_rounded, 'Lịch học / thi', 'system'),
-        _NavItem('profile', Icons.person_rounded, 'Thông tin cá nhân', 'system'),
+      _NavGroup(t('HỆ THỐNG', 'SYSTEM'), [
+        _NavItem('schedules', Icons.event_rounded, t('Lịch học / thi', 'Study / exam schedule'), 'system'),
+        _NavItem('profile', Icons.person_rounded, t('Thông tin cá nhân', 'Personal information'), 'system'),
+        _NavItem('settings', Icons.settings_rounded, t('Cài đặt', 'Settings'), 'system'),
       ]),
     ];
   }
@@ -940,8 +895,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     _TopBar(
                       title: _getPageTitle(),
                       username: _username,
+                      email: _email,
                       onMenuTap: () {},
-                      onProfileTap: () => setState(() => _activePage = 'profile'),
+                      onSettingsTap: () => setState(() => _activePage = 'settings'),
+                      onLogout: _logout,
                       onRefresh: _loadDashboardData,
                       showMenu: !isWide,
                     ),
@@ -1103,8 +1060,8 @@ class _Sidebar extends StatelessWidget {
               ],
             ),
           ),
-          // Logout
-          Padding(
+          // Logout is available from the account menu in the top bar.
+          if (false) Padding(
             padding: const EdgeInsets.all(16),
             child: InkWell(
               onTap: onLogout,
@@ -1200,22 +1157,43 @@ class _NavTile extends StatelessWidget {
 class _TopBar extends StatelessWidget {
   final String title;
   final String username;
+  final String email;
   final VoidCallback onMenuTap;
-  final VoidCallback onProfileTap;
+  final VoidCallback onSettingsTap;
+  final VoidCallback onLogout;
   final VoidCallback onRefresh;
   final bool showMenu;
 
   const _TopBar({
     required this.title,
     required this.username,
+    required this.email,
     required this.onMenuTap,
-    required this.onProfileTap,
+    required this.onSettingsTap,
+    required this.onLogout,
     required this.onRefresh,
     required this.showMenu,
   });
 
   @override
   Widget build(BuildContext context) {
+    final cleanUsername = username.trim().isEmpty ? 'Admin' : username.trim();
+    final accountEmail = email.trim().isNotEmpty
+        ? email.trim()
+        : '${cleanUsername.toLowerCase().replaceAll(' ', '.')}@edu.vn';
+    final avatarLetter = cleanUsername.substring(0, 1).toUpperCase();
+    final now = DateTime.now();
+    const weekdays = [
+      'Thứ Hai',
+      'Thứ Ba',
+      'Thứ Tư',
+      'Thứ Năm',
+      'Thứ Sáu',
+      'Thứ Bảy',
+      'Chủ Nhật',
+    ];
+    final currentDate = '${weekdays[now.weekday - 1]}, ${now.day} tháng ${now.month}, ${now.year}';
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       decoration: BoxDecoration(
@@ -1233,49 +1211,92 @@ class _TopBar extends StatelessWidget {
                 onPressed: () => Scaffold.of(context).openDrawer(),
               ),
             ),
-          Text(
-            title,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xFF1F2937)),
+          Semantics(
+            label: title,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.calendar_today_outlined, size: 16, color: Color(0xFF4B5563)),
+                const SizedBox(width: 9),
+                Text(
+                  currentDate,
+                  style: const TextStyle(
+                    color: Color(0xFF374151),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
           ),
           const Spacer(),
-          IconButton(
-            onPressed: onRefresh,
-            icon: const Icon(Icons.refresh_rounded, color: Color(0xFF6B7280)),
-            tooltip: 'Làm mới',
-          ),
-          const SizedBox(width: 8),
-          Container(
-            width: 1,
-            height: 24,
-            color: const Color(0xFFE5E7EB),
-          ),
-          const SizedBox(width: 12),
-          InkWell(
-            onTap: onProfileTap,
-            borderRadius: BorderRadius.circular(24),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF3F4F6),
-                borderRadius: BorderRadius.circular(24),
+          PopupMenuButton<String>(
+            tooltip: 'Tài khoản',
+            offset: const Offset(0, 54),
+            color: Colors.white,
+            elevation: 8,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            onSelected: (value) {
+              if (value == 'settings') onSettingsTap();
+              if (value == 'logout') onLogout();
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem<String>(
+                value: 'settings',
+                child: Row(
+                  children: [
+                    Icon(Icons.manage_accounts_outlined, size: 19, color: Color(0xFF4B5563)),
+                    SizedBox(width: 12),
+                    Text('Cài đặt tài khoản'),
+                  ],
+                ),
               ),
+              PopupMenuDivider(height: 1),
+              PopupMenuItem<String>(
+                value: 'logout',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout_rounded, size: 19, color: Color(0xFFEF4444)),
+                    SizedBox(width: 12),
+                    Text('Đăng xuất', style: TextStyle(color: Color(0xFFEF4444))),
+                  ],
+                ),
+              ),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const CircleAvatar(
-                    radius: 14,
-                    backgroundColor: Color(0xFF6366F1),
-                    child: Icon(Icons.person, color: Colors.white, size: 16),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    username,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1F2937),
+                  CircleAvatar(
+                    radius: 17,
+                    backgroundColor: const Color(0xFFEA580C),
+                    child: Text(
+                      avatarLetter,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
                     ),
                   ),
-                  const SizedBox(width: 4),
-                  const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF6B7280)),
+                  const SizedBox(width: 9),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        cleanUsername,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF111827),
+                        ),
+                      ),
+                      Text(
+                        accountEmail,
+                        style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 7),
+                  const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Color(0xFF6B7280)),
                 ],
               ),
             ),
@@ -1504,15 +1525,8 @@ class _WelcomeCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: gradient,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: const Color(0xFFF3F4F6),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: gradient.first.withOpacity(0.25), blurRadius: 16, offset: const Offset(0, 8)),
-        ],
       ),
       child: Row(
         children: [
@@ -1528,20 +1542,19 @@ class _WelcomeCard extends StatelessWidget {
               children: [
                 Text(
                   'Xin chào, $username!',
-                  style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
+                  style: const TextStyle(
+                    color: Color(0xFF1F2937),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
-                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13),
                 ),
               ],
             ),
-          ),
-          IconButton(
-            onPressed: onRefresh,
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            tooltip: 'Làm mới',
           ),
         ],
       ),

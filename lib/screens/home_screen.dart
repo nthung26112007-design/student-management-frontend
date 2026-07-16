@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_service.dart';
 import 'account_screen.dart';
+import 'settings_screen.dart';
 import 'attendance_screen.dart';
 import 'class_management_screen.dart';
 import 'schedules_screen.dart';
@@ -335,7 +336,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _MenuTileData(Icons.event_available, 'Điểm danh', Colors.teal, () => setState(() => _desktopSelectedIndex = 4)),
         _MenuTileData(Icons.account_balance_wallet, 'Quản lý học phí', Colors.deepOrange, () => setState(() => _desktopSelectedIndex = 5)),
         _MenuTileData(Icons.event, 'Lịch học / thi', Colors.purple, () => setState(() => _desktopSelectedIndex = 6)),
-        _MenuTileData(Icons.lock_reset, 'Đổi mật khẩu', Colors.indigo, () => setState(() => _desktopSelectedIndex = 7)),
+        _MenuTileData(Icons.settings, 'Cài đặt', Colors.indigo, () => setState(() => _desktopSelectedIndex = 7)),
       ];
     }
     if (_role == 'teacher') {
@@ -345,16 +346,16 @@ class _HomeScreenState extends State<HomeScreen> {
         _MenuTileData(Icons.grade, 'Nhập điểm', Colors.orange, () => setState(() => _desktopSelectedIndex = 2)),
         _MenuTileData(Icons.event_available, 'Điểm danh', Colors.teal, () => setState(() => _desktopSelectedIndex = 3)),
         _MenuTileData(Icons.event, 'Lịch học / thi', Colors.purple, () => setState(() => _desktopSelectedIndex = 4)),
-        _MenuTileData(Icons.lock_reset, 'Đổi mật khẩu', Colors.indigo, () => setState(() => _desktopSelectedIndex = 5)),
+        _MenuTileData(Icons.settings, 'Cài đặt', Colors.indigo, () => setState(() => _desktopSelectedIndex = 5)),
       ];
     }
     return [
       _MenuTileData(Icons.dashboard, 'Tổng quan', Colors.purple, () => setState(() => _desktopSelectedIndex = 0)),
       _MenuTileData(Icons.school, 'Chương trình khung', Colors.green, () => setState(() => _desktopSelectedIndex = 1)),
-      _MenuTileData(Icons.grade, 'Kỳ thi / KQHT', Colors.blue, () => setState(() => _desktopSelectedIndex = 2)),
+      _MenuTileData(Icons.grade, 'Điểm cá nhân', Colors.blue, () => setState(() => _desktopSelectedIndex = 2)),
       _MenuTileData(Icons.account_balance_wallet, 'Học phí của tôi', Colors.deepOrange, () => setState(() => _desktopSelectedIndex = 3)),
       _MenuTileData(Icons.event, 'Lịch học / thi', Colors.purple, () => setState(() => _desktopSelectedIndex = 4)),
-      _MenuTileData(Icons.lock_reset, 'Đổi mật khẩu', Colors.indigo, () => setState(() => _desktopSelectedIndex = 5)),
+      _MenuTileData(Icons.settings, 'Cài đặt', Colors.indigo, () => setState(() => _desktopSelectedIndex = 5)),
       _MenuTileData(Icons.person, 'Thông tin cá nhân', Colors.purple, () => setState(() => _desktopSelectedIndex = 6)),
     ];
   }
@@ -571,7 +572,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildAttendancePanel() {
-    return const AttendanceScreen();
+    return AttendanceScreen(role: _role, studentId: _studentId);
   }
 
   Widget _buildGradesPanel() {
@@ -735,25 +736,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
   Widget _buildPasswordCard() {
-    return Center(
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 420),
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.grey.shade200)),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.lock_reset, size: 48, color: Colors.indigo),
-            const SizedBox(height: 12),
-            const Text('Đổi mật khẩu', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
-            Text('Nhấn nút bên dưới để mở hộp thoại đổi mật khẩu.', style: TextStyle(color: Colors.grey.shade700)),
-            const SizedBox(height: 16),
-            ElevatedButton(onPressed: _changePassword, child: const Text('Đổi mật khẩu')),
-          ],
-        ),
-      ),
-    );
+    return const SettingsScreen();
   }
 
   Widget _buildProfileCard() {

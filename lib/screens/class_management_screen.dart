@@ -380,25 +380,18 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> with Sing
       margin: EdgeInsets.fromLTRB(widget.embedded ? 20 : 0, widget.embedded ? 20 : 0, widget.embedded ? 20 : 0, 0),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF6366F1), Color(0xFF818CF8)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: const Color(0xFFF3F4F6),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: const Color(0xFF6366F1).withOpacity(0.25), blurRadius: 16, offset: const Offset(0, 8)),
-        ],
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.25),
+              color: Colors.white,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.class_rounded, color: Colors.white, size: 28),
+            child: const Icon(Icons.class_rounded, color: Color(0xFF6366F1), size: 28),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -407,20 +400,15 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> with Sing
               children: [
                 const Text(
                   'Quản lý lớp học',
-                  style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800),
+                  style: TextStyle(color: Color(0xFF1F2937), fontSize: 22, fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   '${_classes.length} lớp • ${_getUniqueYears().length} khóa • ${_getUniqueFaculties().length} khoa',
-                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13),
                 ),
               ],
             ),
-          ),
-          IconButton(
-            onPressed: _loadClasses,
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            tooltip: 'Làm mới',
           ),
         ],
       ),

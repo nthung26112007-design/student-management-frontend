@@ -16,6 +16,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
   List<Map<String, dynamic>> _sessions = [];
   bool _isLoading = true;
   String _filter = 'all'; // all | present | absent | late
+  String _classFilter = 'all';
+  String _teacherFilter = 'all';
   List<String> _classOptions = [];
   List<String> _subjectOptions = [];
 
@@ -91,10 +93,26 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
     }
   }
 
-  List<Map<String, dynamic>> _filterSessions() {
-    if (_filter == 'all') return _sessions;
-    return _sessions.where((s) => s['status'] == _filter).toList();
-  }
+  bool get _isAdmin => (widget.role ?? '').toLowerCase() == 'admin';
+
+  List<Map<String, dynamic>> _filterSessions() => _sessions.where((session) {
+    final statusMatches = _filter == 'all' || session['status'] == _filter;
+    final className = (session['class_name'] ?? '').toString().trim();
+    final teacherName = (session['lecturer'] ?? session['teacher_name'] ?? '').toString().trim();
+    final classMatches = _classFilter == 'all' || className == _classFilter;
+    final teacherMatches = _teacherFilter == 'all' || teacherName == _teacherFilter;
+    return statusMatches && classMatches && teacherMatches;
+  }).toList();
+
+  List<String> get _sessionClasses => _sessions
+      .map((session) => (session['class_name'] ?? '').toString().trim())
+      .where((value) => value.isNotEmpty)
+      .toSet().toList()..sort();
+
+  List<String> get _sessionTeachers => _sessions
+      .map((session) => (session['lecturer'] ?? session['teacher_name'] ?? '').toString().trim())
+      .where((value) => value.isNotEmpty)
+      .toSet().toList()..sort();
 
   @override
   Widget build(BuildContext context) {
@@ -206,12 +224,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
         ),
       ),
       actions: [
-        IconButton(
-          icon: const Icon(Icons.add_circle_outline_rounded),
-          onPressed: () => _showCreateSessionDialog(),
-          tooltip: 'Tạo buổi điểm danh',
-        ),
-        IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: _loadData),
+        if (_isAdmin)
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline_rounded),
+            onPressed: () => _showCreateSessionDialog(),
+            tooltip: 'Tạo buổi điểm danh',
+          ),
       ],
     );
   }
@@ -481,6 +499,50 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
             ),
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: _classFilter,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Lọc theo lớp',
+                    prefixIcon: Icon(Icons.class_rounded, size: 18),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  items: [
+                    const DropdownMenuItem(value: 'all', child: Text('Tất cả lớp')),
+                    ..._sessionClasses.map((value) => DropdownMenuItem(value: value, child: Text(value))),
+                  ],
+                  onChanged: (value) => setState(() => _classFilter = value ?? 'all'),
+                ),
+              ),
+              if (_isAdmin) ...[
+                const SizedBox(width: 10),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _teacherFilter,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Lọc theo giáo viên',
+                      prefixIcon: Icon(Icons.person_search_rounded, size: 18),
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: [
+                      const DropdownMenuItem(value: 'all', child: Text('Tất cả giáo viên')),
+                      ..._sessionTeachers.map((value) => DropdownMenuItem(value: value, child: Text(value))),
+                    ],
+                    onChanged: (value) => setState(() => _teacherFilter = value ?? 'all'),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
         Expanded(
           child: list.isEmpty
               ? const Center(
@@ -620,7 +682,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> with SingleTickerPr
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    PopupMenuButton<String>(
+                    if (_isAdmin) PopupMenuButton<String>(
                       icon: const Icon(Icons.more_vert_rounded, size: 20, color: Color(0xFF6B7280)),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),

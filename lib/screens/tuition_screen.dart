@@ -651,13 +651,14 @@ class _TuitionScreenState extends State<TuitionScreen> with SingleTickerProvider
     );
   }
 
-  void _showInvoiceDetail(Map<String, dynamic> invoice) {
-    showModalBottomSheet(
+  Future<void> _showInvoiceDetail(Map<String, dynamic> invoice) async {
+    final paid = await showModalBottomSheet<bool>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => _InvoiceDetailSheet(invoice: invoice),
+      builder: (_) => _InvoiceDetailSheet(invoice: invoice, role: widget.role),
     );
+    if (paid == true) await _loadData();
   }
 
   void _showAddInvoiceDialog() async {
@@ -1160,7 +1161,315 @@ class _CreateInvoiceDialogState extends State<_CreateInvoiceDialog> {
 
 class _InvoiceDetailSheet extends StatelessWidget {
   final Map<String, dynamic> invoice;
-  const _InvoiceDetailSheet({required this.invoice});
+  final String role;
+  const _InvoiceDetailSheet({required this.invoice, required this.role});
+
+  Future<String?> _showBankSelectionPage(BuildContext context, String currentBank) {
+    const banks = [
+      ('Agribank', 'AG', Color(0xFFB91C1C)),
+      ('ACB', 'ACB', Color(0xFF2563EB)),
+      ('NCB', 'NCB', Color(0xFF0284C7)),
+      ('Maritime Bank', 'MSB', Color(0xFFDC2626)),
+      ('Eximbank', 'EX', Color(0xFF0EA5E9)),
+      ('Sacombank', 'STB', Color(0xFF2563EB)),
+      ('VPBank', 'VP', Color(0xFF16A34A)),
+      ('Nam A Bank', 'NAB', Color(0xFF0284C7)),
+      ('TPBank', 'TP', Color(0xFF7C3AED)),
+      ('Vietcombank', 'VCB', Color(0xFF15803D)),
+      ('HDBank', 'HDB', Color(0xFFF59E0B)),
+      ('Techcombank', 'TCB', Color(0xFFDC2626)),
+      ('VietinBank', 'VTB', Color(0xFF2563EB)),
+      ('BIDV', 'BIDV', Color(0xFF0369A1)),
+      ('OCB', 'OCB', Color(0xFFF59E0B)),
+      ('MB Bank', 'MB', Color(0xFF1D4ED8)),
+    ];
+    var selected = currentBank;
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760, maxHeight: 680),
+            child: Column(children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+                ),
+                child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Phương thức thanh toán', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF0284C7))),
+                  SizedBox(height: 5),
+                  Text('THẺ ATM VÀ TÀI KHOẢN NGÂN HÀNG', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                ]),
+              ),
+              Expanded(
+                child: GridView.builder(
+                  padding: const EdgeInsets.all(18),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    childAspectRatio: 2.25,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                  ),
+                  itemCount: banks.length,
+                  itemBuilder: (context, index) {
+                    final item = banks[index];
+                    final active = selected == item.$1;
+                    return InkWell(
+                      onTap: () => setDialogState(() => selected = item.$1),
+                      borderRadius: BorderRadius.circular(10),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: active ? item.$3.withOpacity(.08) : Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: active ? item.$3 : const Color(0xFFD1D5DB), width: active ? 2 : 1),
+                          boxShadow: const [BoxShadow(color: Color(0x11000000), blurRadius: 5, offset: Offset(0, 2))],
+                        ),
+                        child: Row(children: [
+                          Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(color: item.$3.withOpacity(.12), shape: BoxShape.circle),
+                            alignment: Alignment.center,
+                            child: Text(item.$2, style: TextStyle(color: item.$3, fontSize: 10, fontWeight: FontWeight.w900)),
+                          ),
+                          const SizedBox(width: 7),
+                          Expanded(child: Text(item.$1, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800), overflow: TextOverflow.ellipsis)),
+                          if (active) Icon(Icons.check_circle_rounded, color: item.$3, size: 17),
+                        ]),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
+                child: Row(children: [
+                  OutlinedButton.icon(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    icon: const Icon(Icons.chevron_left_rounded),
+                    label: const Text('Quay lại'),
+                  ),
+                  const Spacer(),
+                  ElevatedButton.icon(
+                    onPressed: selected.isEmpty ? null : () => Navigator.pop(dialogContext, selected),
+                    icon: const Icon(Icons.account_balance_rounded),
+                    label: Text('Chọn $selected'),
+                  ),
+                ]),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<bool> _showPaymentDialog(BuildContext context, num remaining) async {
+    final amountController = TextEditingController(text: remaining.toStringAsFixed(0));
+    final noteController = TextEditingController();
+    final bankAccountController = TextEditingController(text: '970400000001');
+    final bankPasswordController = TextEditingController(text: '123456');
+    final bankOtpController = TextEditingController(text: '123456');
+    var method = 'Chọn phương thức';
+    var bank = '';
+    var submitting = false;
+    final paid = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Thanh toán học phí'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(
+                controller: amountController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Số tiền thanh toán',
+                  helperText: 'Còn phải đóng: ${_fmtMoney(remaining.toDouble())}',
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: method,
+                decoration: const InputDecoration(labelText: 'Phương thức', border: OutlineInputBorder()),
+                items: const [
+                  DropdownMenuItem(value: 'Chọn phương thức', child: Text('Chọn phương thức thanh toán')),
+                  DropdownMenuItem(value: 'Chuyển khoản', child: Text('Chuyển khoản ngân hàng')),
+                  DropdownMenuItem(value: 'VNPay QR', child: Text('VNPay QR')),
+                  DropdownMenuItem(value: 'Ví điện tử', child: Text('Ví điện tử')),
+                  DropdownMenuItem(value: 'Ngân hàng ảo', child: Text('EduBank Demo (kiểm thử)')),
+                  DropdownMenuItem(value: 'Tiền mặt', child: Text('Tiền mặt')),
+                ],
+                onChanged: submitting ? null : (value) async {
+                  final nextMethod = value ?? method;
+                  setDialogState(() {
+                    method = nextMethod;
+                    if (method != 'Chuyển khoản' && method != 'VNPay QR') bank = '';
+                  });
+                  if (nextMethod == 'Chuyển khoản' || nextMethod == 'VNPay QR') {
+                    final selectedBank = await _showBankSelectionPage(context, bank);
+                    if (selectedBank != null) setDialogState(() => bank = selectedBank);
+                  }
+                },
+              ),
+              if (method == 'Chuyển khoản' || method == 'VNPay QR') ...[
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: submitting ? null : () async {
+                    final selectedBank = await _showBankSelectionPage(context, bank);
+                    if (selectedBank != null) setDialogState(() => bank = selectedBank);
+                  },
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: method == 'VNPay QR' ? 'Ngân hàng liên kết VNPay' : 'Ngân hàng thanh toán',
+                      prefixIcon: const Icon(Icons.account_balance_rounded),
+                      suffixIcon: const Icon(Icons.chevron_right_rounded),
+                      border: const OutlineInputBorder(),
+                    ),
+                    child: Text(bank.isEmpty ? 'Chọn ngân hàng' : bank),
+                  ),
+                ),
+              ],
+              if (method == 'Ngân hàng ảo') ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFBFDBFE)),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Tài khoản EduBank Demo', style: TextStyle(fontWeight: FontWeight.w800)),
+                      SizedBox(height: 5),
+                      Text('Số tài khoản: 970400000001'),
+                      Text('Mật khẩu: 123456'),
+                      Text('OTP: 123456'),
+                      SizedBox(height: 4),
+                      Text(
+                        'Đây là tài khoản thử, không phát sinh giao dịch ngân hàng thật.',
+                        style: TextStyle(fontSize: 12, color: Color(0xFF1D4ED8)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: bankAccountController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Số tài khoản',
+                    prefixIcon: Icon(Icons.account_balance_rounded),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: bankPasswordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Mật khẩu ngân hàng',
+                    prefixIcon: Icon(Icons.lock_outline_rounded),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: bankOtpController,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  decoration: const InputDecoration(
+                    labelText: 'Mã OTP',
+                    prefixIcon: Icon(Icons.verified_user_outlined),
+                    border: OutlineInputBorder(),
+                    counterText: '',
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              TextField(
+                controller: noteController,
+                maxLines: 2,
+                decoration: const InputDecoration(labelText: 'Ghi chú', border: OutlineInputBorder()),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: submitting ? null : () => Navigator.pop(dialogContext, false), child: const Text('Hủy')),
+            ElevatedButton(
+              onPressed: submitting ? null : () async {
+                final amount = double.tryParse(amountController.text.trim());
+                if (amount == null || amount <= 0 || amount > remaining) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Số tiền không hợp lệ hoặc vượt quá số còn phải đóng')),
+                  );
+                  return;
+                }
+                if (method == 'Chọn phương thức' ||
+                    ((method == 'Chuyển khoản' || method == 'VNPay QR') && bank.isEmpty)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Vui lòng chọn phương thức và ngân hàng thanh toán')),
+                  );
+                  return;
+                }
+                if (method == 'Ngân hàng ảo' &&
+                    (bankAccountController.text.trim().isEmpty ||
+                        bankPasswordController.text.isEmpty ||
+                        bankOtpController.text.isEmpty)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Vui lòng nhập đủ tài khoản, mật khẩu và OTP thử')),
+                  );
+                  return;
+                }
+                setDialogState(() => submitting = true);
+                try {
+                  await ApiService.addTuitionPayment({
+                    'invoice_id': invoice['id'],
+                    'amount': amount,
+                    'payment_date': DateTime.now().toIso8601String().substring(0, 10),
+                    if (method == 'Ngân hàng ảo') ...{
+                      'payment_method': 'demo_bank',
+                      'bank_account': bankAccountController.text.trim(),
+                      'bank_password': bankPasswordController.text,
+                      'bank_otp': bankOtpController.text.trim(),
+                    },
+                    'note': '${method == 'Chuyển khoản' || method == 'VNPay QR' ? '$method - $bank' : method}'
+                        '${noteController.text.trim().isEmpty ? '' : ' - ${noteController.text.trim()}'}',
+                  });
+                  if (dialogContext.mounted) Navigator.pop(dialogContext, true);
+                } catch (error) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Thanh toán thất bại: $error'), backgroundColor: const Color(0xFFEF4444)),
+                  );
+                  if (dialogContext.mounted) setDialogState(() => submitting = false);
+                }
+              },
+              child: submitting
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Xác nhận thanh toán'),
+            ),
+          ],
+        ),
+      ),
+    );
+    amountController.dispose();
+    noteController.dispose();
+    bankAccountController.dispose();
+    bankPasswordController.dispose();
+    bankOtpController.dispose();
+    return paid == true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1407,12 +1716,14 @@ class _InvoiceDetailSheet extends StatelessWidget {
                       Expanded(
                         flex: 2,
                         child: ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(context);
+                          onPressed: () async {
+                            final success = await _showPaymentDialog(context, remaining);
+                            if (!context.mounted || !success) return;
+                            Navigator.pop(context, true);
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Đã mở form thanh toán cho $code'),
-                                backgroundColor: const Color(0xFF8B5CF6),
+                              const SnackBar(
+                                content: Text('Thanh toán học phí thành công'),
+                                backgroundColor: Color(0xFF10B981),
                               ),
                             );
                           },

@@ -66,11 +66,11 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
       if (!mounted) return;
       setState(() {
         if (data is List) {
-          _teachers = data.isNotEmpty ? data : _mockTeachers();
+          _teachers = data;
         } else if (data is Map) {
           _teachers = [data];
         } else {
-          _teachers = _mockTeachers();
+          _teachers = [];
         }
         _applyFilters();
         _isLoading = false;
@@ -78,70 +78,13 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _teachers = _mockTeachers();
+        _teachers = [];
         _applyFilters();
         _isLoading = false;
       });
     }
   }
 
-  List<Map<String, dynamic>> _mockTeachers() {
-    final names = [
-      ['SV001', 'Nguyễn Văn An', 'Nam', '2003-05-12', 'an.nv@teacher.edu.vn', '0901234567', 'CNTT01', 'Đang dạy'],
-      ['SV002', 'Trần Thị Bình', 'Nữ', '2003-08-21', 'binh.tt@teacher.edu.vn', '0901234568', 'CNTT01', 'Đang dạy'],
-      ['SV003', 'Lê Hoàng Cường', 'Nam', '2002-11-03', 'cuong.lh@teacher.edu.vn', '0901234569', 'CNTT01', 'Đang dạy'],
-      ['SV004', 'Phạm Thị Dung', 'Nữ', '2003-02-14', 'dung.pt@teacher.edu.vn', '0901234570', 'CNTT01', 'Đang dạy'],
-      ['SV005', 'Hoàng Minh Đức', 'Nam', '2002-07-09', 'duc.hm@teacher.edu.vn', '0901234571', 'CNTT01', 'Đang dạy'],
-      ['SV006', 'Võ Thị Hoa', 'Nữ', '2003-09-25', 'hoa.vt@teacher.edu.vn', '0901234572', 'CNTT01', 'Đang dạy'],
-      ['SV007', 'Đặng Quốc Huy', 'Nam', '2002-04-18', 'huy.dq@teacher.edu.vn', '0901234573', 'CNTT01', 'Đang dạy'],
-      ['SV008', 'Bùi Thị Lan', 'Nữ', '2003-12-07', 'lan.bt@teacher.edu.vn', '0901234574', 'CNTT01', 'Bảo lưu'],
-      ['SV009', 'Ngô Văn Khánh', 'Nam', '2002-03-22', 'khanh.nv@teacher.edu.vn', '0901234575', 'CNTT01', 'Đang dạy'],
-      ['SV010', 'Đinh Thị Linh', 'Nữ', '2003-06-30', 'linh.dt@teacher.edu.vn', '0901234576', 'CNTT01', 'Đang dạy'],
-      ['SV011', 'Trương Văn Minh', 'Nam', '2002-10-11', 'minh.tv@teacher.edu.vn', '0901234577', 'CNTT02', 'Đang dạy'],
-      ['SV012', 'Phan Thị Ngọc', 'Nữ', '2003-01-19', 'ngoc.pt@teacher.edu.vn', '0901234578', 'CNTT02', 'Đang dạy'],
-      ['SV013', 'Lý Hoàng Phúc', 'Nam', '2002-08-08', 'phuc.lh@teacher.edu.vn', '0901234579', 'CNTT02', 'Đang dạy'],
-      ['SV014', 'Vũ Thị Quỳnh', 'Nữ', '2003-04-15', 'quynh.vt@teacher.edu.vn', '0901234580', 'CNTT02', 'Đang dạy'],
-      ['SV015', 'Tô Văn Sơn', 'Nam', '2002-12-28', 'son.tv@teacher.edu.vn', '0901234581', 'CNTT02', 'Đang dạy'],
-      ['SV016', 'Hồ Thị Trang', 'Nữ', '2003-07-04', 'trang.ht@teacher.edu.vn', '0901234582', 'CNTT02', 'Đang dạy'],
-      ['SV017', 'Châu Văn Tùng', 'Nam', '2002-05-17', 'tung.cv@teacher.edu.vn', '0901234583', 'CNTT02', 'Đang dạy'],
-      ['SV018', 'Dương Thị Uyên', 'Nữ', '2003-11-23', 'uyen.dt@teacher.edu.vn', '0901234584', 'CNTT02', 'Đang dạy'],
-      ['SV019', 'Lâm Văn Vinh', 'Nam', '2002-09-06', 'vinh.lv@teacher.edu.vn', '0901234585', 'CNTT02', 'Tốt nghiệp'],
-      ['SV020', 'Cao Thị Xuân', 'Nữ', '2003-03-14', 'xuan.ct@teacher.edu.vn', '0901234586', 'CNTT02', 'Đang dạy'],
-      ['SV021', 'Đỗ Hoàng Yên', 'Nam', '2002-06-29', 'yen.dh@teacher.edu.vn', '0901234587', 'ATTT01', 'Đang dạy'],
-      ['SV022', 'Mai Thị Hằng', 'Nữ', '2003-10-02', 'hang.mt@teacher.edu.vn', '0901234588', 'ATTT01', 'Đang dạy'],
-      ['SV023', 'Hà Văn Khôi', 'Nam', '2002-02-26', 'khoi.hv@teacher.edu.vn', '0901234589', 'ATTT01', 'Đang dạy'],
-      ['SV024', 'Kiều Thị Mai', 'Nữ', '2003-05-19', 'mai.kt@teacher.edu.vn', '0901234590', 'ATTT01', 'Đang dạy'],
-      ['SV025', 'Thái Văn Nam', 'Nam', '2002-11-11', 'nam.tv@teacher.edu.vn', '0901234591', 'ATTT01', 'Đang dạy'],
-      ['SV026', 'Lưu Thị Oanh', 'Nữ', '2003-08-05', 'oanh.lt@teacher.edu.vn', '0901234592', 'ATTT01', 'Bảo lưu'],
-      ['SV027', 'Tăng Văn Phát', 'Nam', '2002-01-30', 'phat.tv@teacher.edu.vn', '0901234593', 'ATTT01', 'Đang dạy'],
-      ['SV028', 'Quách Thị Quy', 'Nữ', '2003-12-16', 'quy.qt@teacher.edu.vn', '0901234594', 'ATTT01', 'Đang dạy'],
-      ['SV029', 'Tiêu Văn Rôn', 'Nam', '2002-07-23', 'ron.tv@teacher.edu.vn', '0901234595', 'KTPM01', 'Đang dạy'],
-      ['SV030', 'Âu Thị Sen', 'Nữ', '2003-04-08', 'sen.at@teacher.edu.vn', '0901234596', 'KTPM01', 'Đang dạy'],
-      ['SV031', 'Chung Văn Tài', 'Nam', '2002-10-25', 'tai.cv@teacher.edu.vn', '0901234597', 'KTPM01', 'Đang dạy'],
-      ['SV032', 'Mạc Thị Vân', 'Nữ', '2003-06-12', 'van.mt@teacher.edu.vn', '0901234598', 'KTPM01', 'Đang dạy'],
-      ['SV033', 'Nhâm Văn Ưng', 'Nam', '2002-03-09', 'ung.nv@teacher.edu.vn', '0901234599', 'KTPM01', 'Tốt nghiệp'],
-      ['SV034', 'Quan Thị Yến', 'Nữ', '2003-09-28', 'yen.qt@teacher.edu.vn', '0901234600', 'KTPM01', 'Đang dạy'],
-      ['SV035', 'Từ Văn Bảo', 'Nam', '2002-12-04', 'bao.tv@teacher.edu.vn', '0901234601', 'KTPM01', 'Đang dạy'],
-      ['SV036', 'Ứng Thị Cẩm', 'Nữ', '2003-02-21', 'cam.ut@teacher.edu.vn', '0901234602', 'CNTT01', 'Đang dạy'],
-      ['SV037', 'Vương Văn Đạt', 'Nam', '2002-05-15', 'dat.vv@teacher.edu.vn', '0901234603', 'CNTT02', 'Đang dạy'],
-      ['SV038', 'Hứa Thị Giang', 'Nữ', '2003-11-09', 'giang.ht@teacher.edu.vn', '0901234604', 'CNTT02', 'Đang dạy'],
-      ['SV039', 'Kha Văn Hào', 'Nam', '2002-04-02', 'hao.kv@teacher.edu.vn', '0901234605', 'ATTT01', 'Đang dạy'],
-      ['SV040', 'La Thị Kim', 'Nữ', '2003-08-17', 'kim.lt@teacher.edu.vn', '0901234606', 'KTPM01', 'Đang dạy'],
-    ];
-    return List.generate(names.length, (i) {
-      return {
-        'id': i + 1,
-        'teacher_code': names[i][0],
-        'full_name': names[i][1],
-        'gender': names[i][2],
-        'birth_date': names[i][3],
-        'email': names[i][4],
-        'phone': names[i][5],
-        'department': names[i][6],
-        'status': names[i][7],
-      };
-    });
-  }
 
   String _statusOf(Map s) {
     final raw = (s['status'] ?? '').toString().toLowerCase();
@@ -551,25 +494,18 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
       margin: EdgeInsets.fromLTRB(_embedded ? 20 : 0, _embedded ? 20 : 0, _embedded ? 20 : 0, 0),
           padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFF97316), Color(0xFFFBA959)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: const Color(0xFFF3F4F6),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.orange.withOpacity(0.25), blurRadius: 16, offset: const Offset(0, 8)),
-        ],
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.25),
+              color: Colors.white,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.school_rounded, color: Colors.white, size: 28),
+            child: const Icon(Icons.school_rounded, color: Color(0xFFF97316), size: 28),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -577,17 +513,12 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
               crossAxisAlignment: CrossAxisAlignment.start,
               children: const [
                 Text('Quản lý giáo viên',
-                    style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+                    style: TextStyle(color: Color(0xFF1F2937), fontSize: 22, fontWeight: FontWeight.w800)),
                 SizedBox(height: 4),
                 Text('Theo dõi, tìm kiếm và quản lý hồ sơ giáo viên trong hệ thống',
-                    style: TextStyle(color: Colors.white70, fontSize: 13)),
+                    style: TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
               ],
             ),
-          ),
-          IconButton(
-            onPressed: _loadTeachers,
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            tooltip: 'Làm mới',
           ),
         ],
       ),

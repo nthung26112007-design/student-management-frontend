@@ -18,6 +18,8 @@ class GradesScreen extends StatefulWidget {
 }
 
 class _GradesScreenState extends State<GradesScreen> {
+  bool get _canEditGrades => widget.role == 'admin' || widget.role == 'teacher';
+  bool get _canDeleteGrades => widget.role == 'admin';
   List<Map<String, dynamic>> _rows = [];
   Map<String, dynamic> _stats = {};
   List<Map<String, dynamic>> _apiStudents = [];
@@ -69,14 +71,13 @@ class _GradesScreenState extends State<GradesScreen> {
     // Fallbacks
     if (classes.isEmpty) {
       classes = await MockDataService.getGradeBookClasses();
-    } else {
-      classes.insert(0, '');
     }
+    classes = ['', ...classes.where((c) => c.isNotEmpty)];
 
     if (!mounted) return;
     setState(() {
       _classOptions = classes;
-      _selectedClass = (classes.length > 1 && classes[0].isEmpty) ? classes[1] : (classes.isNotEmpty ? classes.first : null);
+      _selectedClass = null;
     });
 
     await _reloadSubjectsAndLoad();
@@ -142,15 +143,12 @@ class _GradesScreenState extends State<GradesScreen> {
       for (var m in MockDataService.canonicalSemesters) {
         _semesterIdMap[m['semester_name'] as String] = m['semester_id'] as int;
       }
-    } else {
-      semesters.insert(0, '');
     }
+    semesters = ['', ...semesters.where((s) => s.isNotEmpty).toSet()];
 
-    // Reset selected semester if it's no longer valid
+    // null luôn có nghĩa là "Tất cả kỳ học"; không tự chọn kỳ đầu tiên.
     if (_selectedSemester != null && !_semesterIdMap.containsKey(_selectedSemester) && _selectedSemester != '') {
-       _selectedSemester = semesters.length > 1 ? semesters[1] : (semesters.isNotEmpty ? semesters.first : null);
-    } else if (_selectedSemester == null) {
-       _selectedSemester = semesters.length > 1 ? semesters[1] : (semesters.isNotEmpty ? semesters.first : null);
+       _selectedSemester = null;
     }
 
     int? semesterId;
@@ -180,9 +178,8 @@ class _GradesScreenState extends State<GradesScreen> {
         className: (_selectedClass == null || _selectedClass!.isEmpty) ? null : _selectedClass,
         semesterId: semesterId,
       );
-    } else {
-      subjects.insert(0, '');
     }
+    subjects = ['', ...subjects.where((s) => s.isNotEmpty).toSet()];
 
     if (!mounted) return;
     setState(() {
@@ -268,7 +265,7 @@ class _GradesScreenState extends State<GradesScreen> {
             ],
           ),
         ),
-        Container(
+        if (_canEditGrades) Container(
           decoration: BoxDecoration(
             gradient: const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFFB923C)]),
             borderRadius: BorderRadius.circular(12),
@@ -697,12 +694,14 @@ class _GradesScreenState extends State<GradesScreen> {
                 children: [
                   _iconAction(Icons.visibility_rounded, const Color(0xFF3B82F6),
                       () => _showRowDetail(r)),
-                  const SizedBox(width: 6),
-                  _iconAction(Icons.edit_rounded, const Color(0xFFF59E0B),
-                      () => _showEditDialog(r)),
-                  const SizedBox(width: 6),
-                  _iconAction(Icons.delete_rounded, const Color(0xFFEF4444),
-                      () => _confirmDelete(r)),
+                  if (_canEditGrades) ...[
+                    const SizedBox(width: 6),
+                    _iconAction(Icons.edit_rounded, const Color(0xFFF59E0B), () => _showEditDialog(r)),
+                  ],
+                  if (_canDeleteGrades) ...[
+                    const SizedBox(width: 6),
+                    _iconAction(Icons.delete_rounded, const Color(0xFFEF4444), () => _confirmDelete(r)),
+                  ],
                 ],
               ),
             ),
@@ -876,9 +875,26 @@ class _GradesScreenState extends State<GradesScreen> {
     final stu = studentsByCode[result['student_code']];
     final semesterId = _semesterIdMap[result['semester']] ?? 0;
     final subjectCode = (result['subject'] as String? ?? '').split(' - ').first;
+    Map<String, dynamic>? matchingRow;
+    for (final row in _rows) {
+      if (row['subject_code'] == subjectCode &&
+          row['semester_id'] == semesterId &&
+          row['class_name'] == stu?['class_name']) {
+        matchingRow = row;
+        break;
+      }
+    }
+    final courseId = matchingRow?['course_id'] as int? ?? 0;
+    if (courseId == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không xác định được môn học trong cơ sở dữ liệu')),
+      );
+      return;
+    }
 
     await MockDataService.saveGrade(
       studentId: (stu?['id'] ?? stu?['student_id'] ?? 0) as int,
+      courseId: courseId,
       semesterId: semesterId,
       subjectCode: subjectCode,
       ccScore: (result['cc_score'] as num?)?.toDouble() ?? 0,
@@ -977,6 +993,7 @@ class _GradesScreenState extends State<GradesScreen> {
 
     await MockDataService.saveGrade(
       studentId: studentId,
+      courseId: r['course_id'] as int? ?? 0,
       semesterId: semesterId,
       subjectCode: subjectCode,
       ccScore: (result['cc_score'] as num?)?.toDouble() ?? 0,
@@ -1322,6 +1339,14 @@ class _AddGradeDialogState extends State<_AddGradeDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final semesterOptions = widget.semesterOptions.where((s) => s.isNotEmpty).toSet().toList();
+    final subjectOptions = widget.subjectOptions.where((s) => s.isNotEmpty).toSet().toList();
+    final studentsByCode = <String, Map<String, dynamic>>{};
+    for (final student in widget.students) {
+      final code = (student['student_code'] ?? '').toString();
+      if (code.isNotEmpty) studentsByCode[code] = student;
+    }
+
     return SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1372,7 +1397,7 @@ class _AddGradeDialogState extends State<_AddGradeDialog> {
               value: _selectedStudentCode,
               isExpanded: true,
               decoration: _dlgDec('Chọn sinh viên'),
-              items: widget.students.map((s) {
+              items: studentsByCode.values.map((s) {
                 return DropdownMenuItem(
                   value: s['student_code'] as String,
                   child: Text(
@@ -1392,7 +1417,7 @@ class _AddGradeDialogState extends State<_AddGradeDialog> {
             value: _selectedSemester,
             isExpanded: true,
             decoration: _dlgDec('Chọn học kỳ'),
-            items: widget.semesterOptions
+            items: semesterOptions
                 .map((s) => DropdownMenuItem(value: s, child: Text(s, overflow: TextOverflow.ellipsis)))
                 .toList(),
             onChanged: _isEdit ? null : (v) => setState(() => _selectedSemester = v),
@@ -1403,7 +1428,7 @@ class _AddGradeDialogState extends State<_AddGradeDialog> {
             value: _selectedSubject,
             isExpanded: true,
             decoration: _dlgDec('Chọn môn'),
-            items: widget.subjectOptions
+            items: subjectOptions
                 .map((s) => DropdownMenuItem(value: s, child: Text(s, overflow: TextOverflow.ellipsis)))
                 .toList(),
             onChanged: _isEdit ? null : (v) => setState(() => _selectedSubject = v),

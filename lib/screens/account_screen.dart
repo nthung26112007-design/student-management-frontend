@@ -316,40 +316,6 @@ class _AccountScreenState extends State<AccountScreen> {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 16),
-                        Card(
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('Thao tác nhanh', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: OutlinedButton.icon(
-                                        onPressed: _changeAvatar,
-                                        icon: const Icon(Icons.photo_camera),
-                                        label: const Text('Đổi ảnh'),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: ElevatedButton.icon(
-                                        onPressed: _changePassword,
-                                        icon: const Icon(Icons.lock_reset),
-                                        label: const Text('Đổi mật khẩu'),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   ),

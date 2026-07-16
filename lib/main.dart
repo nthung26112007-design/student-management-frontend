@@ -1,11 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:provider/provider.dart';
+import 'services/language_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/admin_dashboard_screen.dart';
 import 'screens/teacher_dashboard_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MyApp());
+  final language = LanguageService();
+  await language.load();
+  runApp(
+    ChangeNotifierProvider.value(
+      value: language,
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -13,11 +23,19 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final language = context.watch<LanguageService>();
     final colorScheme = ColorScheme.fromSeed(seedColor: const Color(0xFF2563EB));
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Student Management',
+      locale: language.locale,
+      supportedLocales: const [Locale('vi'), Locale('en')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: colorScheme,

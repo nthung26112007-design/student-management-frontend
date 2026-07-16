@@ -101,17 +101,15 @@ class _CurriculumScreenState extends State<CurriculumScreen> {
       } else {
         // Admin/Teacher: load danh sách lớp
         try {
-          final studentsData = await ApiService.getStudents();
-          if (studentsData is List) {
-            availableClasses = studentsData
-                .map((e) => (e['class_name'] ?? '').toString().trim())
-                .where((c) => c.isNotEmpty)
-                .toSet()
-                .toList();
-            availableClasses.sort();
-          }
+          final classesData = await ApiService.getClasses();
+          availableClasses = classesData
+              .map((e) => (e['name'] ?? '').toString().trim())
+              .where((c) => c.isNotEmpty)
+              .toSet()
+              .toList();
+          availableClasses.sort();
         } catch (_) {}
-        // Fallback mock: nếu backend không trả về danh sách lớp, dùng danh sách mặc định
+        // Fallback mock
         if (availableClasses.isEmpty) {
           availableClasses = ['CNTT01', 'CNTT02', 'ATTT01', 'KTPM01'];
         }
@@ -1114,17 +1112,19 @@ class _CurriculumScreenState extends State<CurriculumScreen> {
             if (!isWide) {
               return Column(
                 children: [
-                  _popupDropdownButton(
-                    btnKey: _classBtnKey,
-                    icon: Icons.class_,
-                    iconBg: const Color(0xFFEEF2FF),
-                    iconColor: const Color(0xFF4F46E5),
-                    label: 'LỚP HỌC',
-                    value: _selectedClass ?? 'Tất cả lớp',
-                    accentColor: const Color(0xFFF97316),
-                    onTap: _toggleClassOverlay,
-                  ),
-                  const SizedBox(height: 12),
+                  if (!_isStudent) ...[
+                    _popupDropdownButton(
+                      btnKey: _classBtnKey,
+                      icon: Icons.class_,
+                      iconBg: const Color(0xFFEEF2FF),
+                      iconColor: const Color(0xFF4F46E5),
+                      label: 'LỚP HỌC',
+                      value: _selectedClass ?? 'Tất cả lớp',
+                      accentColor: const Color(0xFFF97316),
+                      onTap: _toggleClassOverlay,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   _popupDropdownButton(
                     btnKey: _semesterBtnKey,
                     icon: Icons.school_outlined,
@@ -1151,20 +1151,22 @@ class _CurriculumScreenState extends State<CurriculumScreen> {
             return Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  flex: 4,
-                  child: _popupDropdownButton(
-                    btnKey: _classBtnKey,
-                    icon: Icons.class_,
-                    iconBg: const Color(0xFFEEF2FF),
-                    iconColor: const Color(0xFF4F46E5),
-                    label: 'LỚP HỌC',
-                    value: _selectedClass ?? 'Tất cả lớp',
-                    accentColor: const Color(0xFFF97316),
-                    onTap: _toggleClassOverlay,
+                if (!_isStudent) ...[
+                  Expanded(
+                    flex: 4,
+                    child: _popupDropdownButton(
+                      btnKey: _classBtnKey,
+                      icon: Icons.class_,
+                      iconBg: const Color(0xFFEEF2FF),
+                      iconColor: const Color(0xFF4F46E5),
+                      label: 'LỚP HỌC',
+                      value: _selectedClass ?? 'Tất cả lớp',
+                      accentColor: const Color(0xFFF97316),
+                      onTap: _toggleClassOverlay,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
+                  const SizedBox(width: 12),
+                ],
                 Expanded(
                   flex: 4,
                   child: _popupDropdownButton(
@@ -1684,20 +1686,13 @@ class _CurriculumScreenState extends State<CurriculumScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFFF97316), Color(0xFFFBA959)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        boxShadow: [BoxShadow(color: Color(0x40F97316), blurRadius: 16, offset: Offset(0, 8))],
-      ),
+      decoration: const BoxDecoration(color: Color(0xFFF3F4F6)),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: Colors.white.withOpacity(0.25), borderRadius: BorderRadius.circular(12)),
-            child: const Icon(Icons.menu_book_rounded, color: Colors.white, size: 28),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+            child: const Icon(Icons.menu_book_rounded, color: Color(0xFFF97316), size: 28),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -1705,17 +1700,12 @@ class _CurriculumScreenState extends State<CurriculumScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: const [
                 Text('Chương trình khung',
-                    style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+                    style: TextStyle(color: Color(0xFF1F2937), fontSize: 22, fontWeight: FontWeight.w800)),
                 SizedBox(height: 4),
                 Text('Quản lý các kỳ học và môn học trong chương trình đào tạo',
-                    style: TextStyle(color: Colors.white70, fontSize: 13)),
+                    style: TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
               ],
             ),
-          ),
-          IconButton(
-            onPressed: _loadData,
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            tooltip: 'Làm mới',
           ),
         ],
       ),

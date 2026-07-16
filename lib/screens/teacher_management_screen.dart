@@ -533,25 +533,18 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
       margin: EdgeInsets.fromLTRB(_embedded ? 20 : 0, _embedded ? 20 : 0, _embedded ? 20 : 0, 0),
           padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFF97316), Color(0xFFFBA959)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: const Color(0xFFF3F4F6),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.orange.withOpacity(0.25), blurRadius: 16, offset: const Offset(0, 8)),
-        ],
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.25),
+              color: Colors.white,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.school_rounded, color: Colors.white, size: 28),
+            child: const Icon(Icons.school_rounded, color: Color(0xFFF97316), size: 28),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -559,17 +552,12 @@ class _TeacherManagementScreenState extends State<TeacherManagementScreen> with 
               crossAxisAlignment: CrossAxisAlignment.start,
               children: const [
                 Text('Quản lý giáo viên',
-                    style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+                    style: TextStyle(color: Color(0xFF1F2937), fontSize: 22, fontWeight: FontWeight.w800)),
                 SizedBox(height: 4),
                 Text('Theo dõi, tìm kiếm và quản lý hồ sơ giáo viên trong hệ thống',
-                    style: TextStyle(color: Colors.white70, fontSize: 13)),
+                    style: TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
               ],
             ),
-          ),
-          IconButton(
-            onPressed: _loadTeachers,
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            tooltip: 'Làm mới',
           ),
         ],
       ),

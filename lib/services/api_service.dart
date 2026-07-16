@@ -365,8 +365,13 @@ class ApiService {
     return jsonDecode(res.body);
   }
 
-  static Future<void> addTuitionPayment(Map<String, dynamic> data) async {
-    await http.post(Uri.parse('$baseUrl/fees/payments'), headers: await authHeaders(), body: jsonEncode(data));
+  static Future<Map<String, dynamic>> addTuitionPayment(Map<String, dynamic> data) async {
+    final res = await http.post(Uri.parse('$baseUrl/fees/payments'), headers: await authHeaders(), body: jsonEncode(data));
+    final decoded = jsonDecode(res.body);
+    if (res.statusCode >= 400) {
+      throw Exception(decoded is Map ? decoded['message']?.toString() ?? decoded.toString() : decoded.toString());
+    }
+    return decoded is Map<String, dynamic> ? decoded : Map<String, dynamic>.from(decoded as Map);
   }
 
   static Future<List> getTuitionSummary({int? studentId}) async {

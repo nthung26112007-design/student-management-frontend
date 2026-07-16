@@ -193,15 +193,9 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
       backgroundColor: const Color(0xFF3B82F6),
       foregroundColor: Colors.white,
       elevation: 0,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_rounded),
-        onPressed: () => Navigator.maybePop(context),
-      ),
+      automaticallyImplyLeading: false,
       title: const Text('Lịch học / Lịch thi',
           style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-      actions: [
-        IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: _loadData),
-      ],
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(28),
         child: Padding(

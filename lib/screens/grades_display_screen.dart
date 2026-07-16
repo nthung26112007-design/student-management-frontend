@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/mock_data_service.dart';
+import '../services/api_service.dart';
 
 /// Màn hình xem điểm của sinh viên (chỉ đọc).
 /// Dùng cho student xem kết quả học tập.
@@ -34,20 +34,20 @@ class _GradesDisplayScreenState extends State<GradesDisplayScreen> {
   }
 
   Future<void> _loadFilters() async {
-    List<String> semesters;
+    List<String> semesters = [''];
     try {
-      semesters = await MockDataService.getGradeBookSemesters();
-    } catch (_) {
-      semesters = [];
-    }
+      final profile = await ApiService.getMyProfile();
+      final className = (profile['class_name'] ?? '').toString().trim();
+      final data = await ApiService.getSemesters(className: className.isEmpty ? null : className);
+      semesters.addAll(data
+          .map((semester) => (semester['name'] ?? semester['semester_name'] ?? '').toString())
+          .where((name) => name.isNotEmpty));
+    } catch (_) {}
 
     if (!mounted) return;
     setState(() {
-      _semesterOptions = semesters;
-      // Bỏ qua '' ở đầu — chọn học kỳ đầu tiên thực sự
-      _selectedSemester = semesters.isNotEmpty && semesters.first.isNotEmpty
-          ? semesters.first
-          : (semesters.length > 1 ? semesters[1] : '');
+      _semesterOptions = semesters.toSet().toList();
+      _selectedSemester = '';
     });
     await _loadData();
   }
@@ -55,8 +55,23 @@ class _GradesDisplayScreenState extends State<GradesDisplayScreen> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final rows = await MockDataService.getStudentGrades(widget.studentId);
-      final stats = await MockDataService.getStudentGradeStats(widget.studentId);
+      final data = await ApiService.getGrades(studentId: widget.studentId);
+      final rows = data.map((item) {
+        final row = Map<String, dynamic>.from(item);
+        for (final key in ['cc_score', 'qkt_score', 'ckt_score', 'total_score']) {
+          if (row[key] != null) row[key] = double.tryParse(row[key].toString());
+        }
+        row['semester_id'] = row['resolved_semester_id'] ?? row['semester_id'];
+        row['semester_name'] = row['semester_name'] ?? 'Học kỳ ${row['semester_id'] ?? ''}';
+        return row;
+      }).toList();
+      final graded = rows.where((row) => row['total_score'] != null).toList();
+      final total = graded.length;
+      final passed = graded.where((row) => row['status'] == 'pass' || (row['total_score'] as double) >= 4).length;
+      final average = total == 0
+          ? 0.0
+          : graded.fold<double>(0, (sum, row) => sum + (row['total_score'] as double)) / total;
+      final stats = {'total': total, 'passed': passed, 'average': average};
       if (!mounted) return;
       setState(() {
         _rows = rows;
@@ -428,15 +443,15 @@ class _GradesDisplayScreenState extends State<GradesDisplayScreen> {
                   )),
                   Expanded(flex: 2, child: Text(row['semester_name'] ?? '', style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)), textAlign: TextAlign.center)),
                   SizedBox(width: 8),
-                  SizedBox(width: 60, child: _buildGradeCell(row['cc_score']?.toString(), Colors.blue, Colors.blue), textAlign: TextAlign.center),
+                  SizedBox(width: 60, child: Center(child: _buildGradeCell(row['cc_score']?.toString(), Colors.blue, Colors.blue))),
                   SizedBox(width: 8),
-                  SizedBox(width: 60, child: _buildGradeCell(row['qkt_score']?.toString(), Colors.purple, Colors.purple), textAlign: TextAlign.center),
+                  SizedBox(width: 60, child: Center(child: _buildGradeCell(row['qkt_score']?.toString(), Colors.purple, Colors.purple))),
                   SizedBox(width: 8),
-                  SizedBox(width: 60, child: _buildGradeCell(row['ckt_score']?.toString(), Colors.orange, Colors.orange), textAlign: TextAlign.center),
+                  SizedBox(width: 60, child: Center(child: _buildGradeCell(row['ckt_score']?.toString(), Colors.orange, Colors.orange))),
                   SizedBox(width: 8),
-                  SizedBox(width: 60, child: _buildGradeCell(row['total_score']?.toStringAsFixed(1), Colors.teal, Colors.teal), textAlign: TextAlign.center),
+                  SizedBox(width: 60, child: Center(child: _buildGradeCell(row['total_score']?.toStringAsFixed(1), Colors.teal, Colors.teal))),
                   SizedBox(width: 8),
-                  SizedBox(width: 60, child: _buildGradeCell(grade, _gradeColor(grade), _gradeColor(grade)), textAlign: TextAlign.center),
+                  SizedBox(width: 60, child: Center(child: _buildGradeCell(grade, _gradeColor(grade), _gradeColor(grade)))),
                   SizedBox(width: 8),
                   SizedBox(
                     width: 70,
