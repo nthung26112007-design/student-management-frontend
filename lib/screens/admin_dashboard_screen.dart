@@ -70,6 +70,43 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Future<void> _loadDashboardData() async {
     try {
+      // Load aggregate counters from one resilient backend endpoint. Previously,
+      // one failing auxiliary request caused the whole dashboard to remain 0.
+      final overview = await ApiService.getStatsOverview();
+      if (!mounted) return;
+      setState(() {
+        _totalStudents = (overview['students'] as num?)?.toInt() ?? 0;
+        _totalCourses = (overview['courses'] as num?)?.toInt() ?? 0;
+        _totalSemesters = (overview['semesters'] as num?)?.toInt() ?? 0;
+        _totalSchedules = (overview['schedules'] as num?)?.toInt() ?? 0;
+        _totalInvoices = (overview['invoices'] as num?)?.toInt() ?? 0;
+      });
+
+      // Tuition must be loaded independently of the other dashboard lists.
+      // Otherwise an earlier API failure leaves both revenue cards at zero.
+      final invoicesData = await ApiService.getTuitionInvoices();
+      final invoices = invoicesData
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      double paid = 0;
+      double unpaid = 0;
+      for (final inv in invoices) {
+        final amount = double.tryParse('${inv['amount'] ?? 0}') ?? 0;
+        final paidAmount = double.tryParse('${inv['paid_amount'] ?? 0}') ?? 0;
+        final remainingAmount = double.tryParse(
+              '${inv['remaining_amount'] ?? amount - paidAmount}',
+            ) ??
+            (amount - paidAmount);
+        paid += paidAmount;
+        unpaid += remainingAmount < 0 ? 0 : remainingAmount;
+      }
+      if (!mounted) return;
+      setState(() {
+        _paidAmount = paid;
+        _unpaidAmount = unpaid;
+        _recentInvoices = invoices.take(5).toList();
+      });
+
       // Students
       final studentsData = await ApiService.getStudents();
       final students = studentsData is List
@@ -94,24 +131,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ? schedulesData.map((e) => Map<String, dynamic>.from(e)).toList()
           : <Map<String, dynamic>>[];
 
-      // Invoices
-      final invoicesData = await ApiService.getTuitionInvoices();
-      final invoices = invoicesData is List
-          ? invoicesData.map((e) => Map<String, dynamic>.from(e)).toList()
-          : <Map<String, dynamic>>[];
-
-      double paid = 0;
-      double unpaid = 0;
-      for (final inv in invoices) {
-        final amount = (inv['amount'] as num?)?.toDouble() ?? 0;
-        final status = (inv['status'] ?? '').toString().toLowerCase();
-        if (status == 'paid') {
-          paid += amount;
-        } else {
-          unpaid += amount;
-        }
-      }
-
       final classGroups = <String, int>{};
       for (final s in students) {
         final c = (s['class_name'] ?? '').toString().trim();
@@ -122,18 +141,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
       if (!mounted) return;
       setState(() {
-        _totalStudents = students.length;
-        _totalCourses = courses.length;
-        _totalSemesters = semesters.length;
-        _totalSchedules = schedules.length;
-        _totalInvoices = invoices.length;
+        _totalStudents = (overview['students'] as num?)?.toInt() ?? students.length;
+        _totalCourses = (overview['courses'] as num?)?.toInt() ?? courses.length;
+        _totalSemesters = (overview['semesters'] as num?)?.toInt() ?? semesters.length;
+        _totalSchedules = (overview['schedules'] as num?)?.toInt() ?? schedules.length;
+        _totalInvoices = (overview['invoices'] as num?)?.toInt() ?? invoices.length;
         _paidAmount = paid;
         _unpaidAmount = unpaid;
         _studentsByClass = classGroups;
         _recentStudents = students.take(5).toList();
         _recentInvoices = invoices.take(5).toList();
       });
-    } catch (_) {}
+    } catch (error) {
+      debugPrint('Error loading dashboard data: $error');
+    }
   }
 
   Future<void> _logout() async {
